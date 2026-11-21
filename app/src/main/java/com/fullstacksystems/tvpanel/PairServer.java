@@ -1,8 +1,6 @@
 package com.fullstacksystems.tvpanel;
 
 import android.content.Context;
-import android.net.nsd.NsdManager;
-import android.net.nsd.NsdServiceInfo;
 import android.os.Build;
 
 import org.json.JSONObject;
@@ -21,7 +19,7 @@ import java.security.SecureRandom;
 
 /**
  * Pairing with the TV Panel integration in Home Assistant, while the app's own page is open. The page shows a
- * six-digit code; the integration finds the TV over mDNS ({@value #SERVICE}) or by its address, the person types
+ * six-digit code; the integration finds the TV over mDNS ({@value #SERVICE}, announced by {@link MdnsResponder}) or by its address, the person types
  * the code into Home Assistant, and the integration sends the address and a token of the TV's own:
  *
  * <pre>
@@ -53,8 +51,7 @@ final class PairServer {
     private int wrong;
     private ServerSocket server;
     private Thread thread;
-    private NsdManager nsd;
-    private NsdManager.RegistrationListener registration;
+    private MdnsResponder mdns;
 
     PairServer(Context ctx, Listener listener) {
         this.ctx = ctx.getApplicationContext();
@@ -91,12 +88,8 @@ final class PairServer {
     }
 
     void stop() {
-        try {
-            if (nsd != null && registration != null) nsd.unregisterService(registration);
-        } catch (RuntimeException ignored) {
-            // Already gone.
-        }
-        registration = null;
+        if (mdns != null) mdns.stop();
+        mdns = null;
         try {
             if (server != null) server.close();
         } catch (IOException ignored) {
@@ -112,25 +105,14 @@ final class PairServer {
     }
 
     private void advertise() {
-        nsd = (NsdManager) ctx.getSystemService(Context.NSD_SERVICE);
-        if (nsd == null) return;
-        NsdServiceInfo info = new NsdServiceInfo();
-        info.setServiceName("TV Panel " + name());
-        info.setServiceType(SERVICE);
-        info.setPort(PORT);
-        info.setAttribute("id", id(ctx));
-        info.setAttribute("name", name());
-        registration = new NsdManager.RegistrationListener() {
-            @Override public void onServiceRegistered(NsdServiceInfo i) { }
-            @Override public void onRegistrationFailed(NsdServiceInfo i, int err) { }
-            @Override public void onServiceUnregistered(NsdServiceInfo i) { }
-            @Override public void onUnregistrationFailed(NsdServiceInfo i, int err) { }
-        };
-        try {
-            nsd.registerService(info, NsdManager.PROTOCOL_DNS_SD, registration);
-        } catch (RuntimeException e) {
-            registration = null;
-        }
+        java.net.Inet4Address ip = MdnsResponder.localIpv4(null);
+        if (ip == null) return;
+        java.util.Map<String, String> txt = new java.util.LinkedHashMap<>();
+        txt.put("id", id(ctx));
+        txt.put("name", name());
+        mdns = new MdnsResponder(ctx, new Mdns.Service(Mdns.label("TV Panel " + name()), SERVICE, "tvpanel-" + id(ctx),
+                ip, PORT, txt));
+        mdns.start();
     }
 
     private void serve() {

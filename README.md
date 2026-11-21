@@ -26,8 +26,9 @@ a modified [CleanYourTV](https://github.com/Gathin23/cleanyourtv) launcher (see 
 1. Download **TV Panel** in HACS.
 1. Restart Home Assistant.
 1. Install the app on the TV (see [Build](#build)) and open it. It shows a six-digit code and the TV's address.
-1. Home Assistant offers the TV under **Settings** → **Devices & services** while the app is open; press **Add** and
-   enter the code. Or set it up from the UI and type the address the TV shows:
+1. Set up the integration from the UI, type the address the TV shows, then enter the code. (The app also announces
+   itself over mDNS while it's open, so Home Assistant may offer the TV under **Settings** → **Devices & services**;
+   that doesn't work on every TV and network yet.)
 
 <a href="https://my.home-assistant.io/redirect/config_flow_start/?domain=tv_panel" target="_blank" rel="noreferrer noopener"><img src="https://my.home-assistant.io/badges/config_flow_start.svg" alt="Add Integration"></a>
 

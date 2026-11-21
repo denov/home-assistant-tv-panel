@@ -6,6 +6,9 @@
 
     <!-- Your Home Assistant server, and nothing else. -->
     <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <!-- mDNS on Wi-Fi TVs, so Home Assistant finds the TV while its TV Panel page is open. -->
+    <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE" />
 
     <application
         android:allowBackup="false"
