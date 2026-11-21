@@ -33,6 +33,11 @@
     }
   },
   "options": {
+    "step": {
+      "init": {
+        "title": "TV Panel settings"
+      }
+    },
     "abort": {
       "use_page": "TV Panel's settings are on its own page, which shows live values and a preview of the TV's row: [open TV Panel]({url}), or choose TV Panel in the sidebar."
     }
