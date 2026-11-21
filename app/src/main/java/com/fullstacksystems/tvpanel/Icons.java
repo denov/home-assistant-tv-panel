@@ -13,7 +13,7 @@ import java.util.Set;
 /** The bundled Material Design Icons, by the names Ha uses ("thermometer", "weather_sunny", ...). */
 final class Icons {
     static final Set<String> NAMES = new HashSet<>(Arrays.asList(
-            "thermometer", "fish", "ph", "shaker_outline", "test_tube", "flask", "garage", "garage_open", "solar_power", "flash",
+            "thermometer", "thermostat", "fish", "ph", "shaker_outline", "test_tube", "flask", "garage", "garage_open", "solar_power", "flash",
             "gauge", "water_percent", "water_outline", "lock", "lock_open_variant", "door_open", "door_closed",
             "weather_sunny", "weather_night", "weather_partly_cloudy", "weather_night_partly_cloudy", "weather_cloudy",
             "weather_fog", "weather_hail", "weather_lightning", "weather_lightning_rainy", "weather_pouring",

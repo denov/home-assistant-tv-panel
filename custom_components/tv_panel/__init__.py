@@ -1,7 +1,8 @@
 """TV Panel: Home Assistant on an Android TV's home screen, with pages for weather, solar, a reef tank and cameras.
 
-The integration pairs the TV (its own local-only user and token), holds the TV's settings (Configure: the chips, the
-camera grid's order, the solar layout) and a switch for the widget row. The TV reads them from /api/tv_panel/config.
+The integration pairs the TV (its own local-only user and token), holds the TV's settings and a switch for the widget
+row. The settings (the chips, the cameras, the tank, the solar layout) are edited on the TV Panel page in the sidebar,
+and the TV reads them from /api/tv_panel/config.
 Removing the integration deletes the TV's user, which signs the TV out.
 """
 
@@ -17,7 +18,9 @@ from homeassistant.helpers.typing import ConfigType
 
 from .const import CONF_TV_ID, CONF_USER_ID, DOMAIN
 from .pairing import async_remove_user
+from .panel import async_register as async_register_panel
 from .view import TvPanelConfigView
+from .websocket import async_register as async_register_websocket
 
 PLATFORMS = [Platform.SWITCH]
 CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
@@ -34,8 +37,10 @@ type TvPanelConfigEntry = ConfigEntry[TvPanelData]
 
 
 async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
-    """The settings endpoint serves every TV, each with its own token."""
+    """The TV's settings endpoint (each TV with its own token), and the page that edits the settings."""
     hass.http.register_view(TvPanelConfigView())
+    async_register_websocket(hass)
+    await async_register_panel(hass)
     return True
 
 

@@ -6,7 +6,9 @@ import org.json.JSONObject;
 
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * The TV's settings from the TV Panel integration (GET /api/tv_panel/config): the chips in order, the camera grid's
@@ -16,26 +18,59 @@ import java.util.List;
  */
 final class Settings {
     /** No integration (an older setup with a pushed token): everything the old way. */
-    static final Settings NONE = new Settings(null, null, null, null);
+    static final Settings NONE = new Settings(null, null, null, null, Collections.emptyMap(), false, false);
 
     final List<String> entities;
     final List<String> cameraOrder;
     /** The solar layout as JSON text, as Config.solarLayout() holds it. */
     final String solar;
     final Boolean row;
+    /**
+     * The chips' own labels, by chip key: an entity id, {@link Ha#CAMERAS} or {@link Ha#APEX}. A chip without one
+     * uses its entity's name.
+     */
+    final Map<String, String> labels;
+    /** 0.3.0: {@link #cameraOrder} is the whole grid, so the camera pages use it rather than the chips' list. */
+    final boolean ownCameras;
+    /** 0.3.0: the tank's columns come in a set order, so they're not sorted by label. */
+    final boolean tankOrdered;
 
-    Settings(List<String> entities, List<String> cameraOrder, String solar, Boolean row) {
+    Settings(List<String> entities, List<String> cameraOrder, String solar, Boolean row, Map<String, String> labels,
+            boolean ownCameras, boolean tankOrdered) {
         this.entities = entities;
         this.cameraOrder = cameraOrder;
         this.solar = solar;
         this.row = row;
+        this.labels = labels;
+        this.ownCameras = ownCameras;
+        this.tankOrdered = tankOrdered;
     }
 
     static Settings parse(String json) throws JSONException {
         JSONObject o = new JSONObject(json);
         JSONObject solar = o.optJSONObject("solar");
-        return new Settings(list(o, "entities"), list(o, "camera_order"), solar == null ? null : solar.toString(),
-                o.isNull("row") || !o.has("row") ? null : o.optBoolean("row", true));
+        // 0.3.0 sends "cameras" (the grid's order and members); 0.2.0 sent "camera_order".
+        List<String> cameras = list(o, "cameras");
+        return new Settings(list(o, "entities"), cameras != null ? cameras : list(o, "camera_order"),
+                solar == null ? null : solar.toString(),
+                o.isNull("row") || !o.has("row") ? null : o.optBoolean("row", true), labels(o.optJSONArray("chips")),
+                cameras != null, o.optJSONArray("tank") != null);
+    }
+
+    private static Map<String, String> labels(JSONArray chips) {
+        Map<String, String> out = new HashMap<>();
+        if (chips == null) return Collections.unmodifiableMap(out);
+        for (int i = 0; i < chips.length(); i++) {
+            JSONObject c = chips.optJSONObject(i);
+            if (c == null) continue;
+            String label = c.optString("label", "").trim();
+            if (label.isEmpty()) continue;
+            String type = c.optString("type");
+            String key = "entity".equals(type) ? c.optString("entity") : "tank".equals(type) ? Ha.APEX
+                    : "cameras".equals(type) ? Ha.CAMERAS : "";
+            if (!key.isEmpty()) out.put(key, label);
+        }
+        return Collections.unmodifiableMap(out);
     }
 
     private static List<String> list(JSONObject o, String key) {
@@ -57,7 +92,8 @@ final class Settings {
     /** The template variables for what's set: {"entities": [...], "row": bool, "camera_order": "a,b"}. */
     JSONObject variables(boolean withCameraOrder) throws JSONException {
         JSONObject v = new JSONObject();
-        if (entities != null) v.put("entities", new JSONArray(entities));
+        List<String> list = withCameraOrder && ownCameras ? cameraOrder : entities;
+        if (list != null) v.put("entities", new JSONArray(list));
         if (row != null) v.put("row", row.booleanValue());
         if (withCameraOrder && cameraOrder != null) v.put("camera_order", String.join(",", cameraOrder));
         return v;

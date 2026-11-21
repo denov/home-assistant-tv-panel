@@ -32,6 +32,9 @@ final class Ha {
             + "'state': states(e), 'unit': state_attr(e, 'unit_of_measurement'), 'icon': state_attr(e, 'icon'), "
             + "'dc': state_attr(e, 'device_class'), 'temp': state_attr(e, 'temperature'), "
             + "'tunit': state_attr(e, 'temperature_unit'), 'apex': state_attr(e, 'apex_probe_type'), "
+            // A thermostat: where it is (temp is where it's set), or the range in heat_cool mode.
+            + "'cur': state_attr(e, 'current_temperature'), 'lo': state_attr(e, 'target_temp_low'), "
+            + "'hi': state_attr(e, 'target_temp_high'), 'action': state_attr(e, 'hvac_action'), "
             + "'motion': " + Cameras.MOTION + " > 0}] %}"
             + "{% endfor %}"
             // The Apex controller's alarm (binary_sensor.*apex_alarm, unlabelled): it colours the tank chip.
@@ -82,6 +85,10 @@ final class Ha {
             this.open = !page.isEmpty();
             this.sortGroup = sortGroup;
         }
+
+        Widget withLabel(String l) {
+            return new Widget(key, l, value, icon, colour, page, sortGroup);
+        }
     }
 
     static String templateBody() {
@@ -98,6 +105,11 @@ final class Ha {
      * from labels, weather first, then by device, then by name.
      */
     static List<Widget> parseWidgets(String json) throws JSONException {
+        return parseWidgets(json, Settings.NONE);
+    }
+
+    /** With the integration's settings: the chips' own labels. The tank chip's label is its columns, so it keeps them. */
+    static List<Widget> parseWidgets(String json, Settings settings) throws JSONException {
         JSONObject o = new JSONObject(json);
         if ("off".equals(o.optString("on"))) return Collections.emptyList();
         JSONArray items = o.optJSONArray("items");
@@ -110,9 +122,15 @@ final class Ha {
             if (w != null) out.add(w);
         }
         mergeCameras(out);
-        mergeApex(out, "on".equals(o.optString("alarm")), o.optInt("alerts", 0));
+        boolean ordered = o.optBoolean("ordered");
+        mergeApex(out, "on".equals(o.optString("alarm")), o.optInt("alerts", 0), !settings.tankOrdered);
+        for (int i = 0; i < out.size(); i++) {
+            Widget w = out.get(i);
+            String label = settings.labels.get(w.key);
+            if (label != null && !APEX.equals(w.key)) out.set(i, w.withLabel(label));
+        }
         // The integration's list is in the order the person chose; the labels have none, so sort those.
-        if (!o.optBoolean("ordered")) out.sort((a, b) -> {
+        if (!ordered) out.sort((a, b) -> {
             int g = a.sortGroup.compareToIgnoreCase(b.sortGroup);
             return g != 0 ? g : a.label.compareToIgnoreCase(b.label);
         });
@@ -148,6 +166,11 @@ final class Ha {
      * red and an "Alarm" column comes first with the number of active alerts.
      */
     static void mergeApex(List<Widget> chips, boolean alarm, int alerts) {
+        mergeApex(chips, alarm, alerts, true);
+    }
+
+    /** {@code byLabel} false keeps the probes in the order they came: the order set in the integration. */
+    static void mergeApex(List<Widget> chips, boolean alarm, int alerts, boolean byLabel) {
         List<Widget> probes = new ArrayList<>();
         int at = -1;
         for (int i = chips.size() - 1; i >= 0; i--) {
@@ -158,7 +181,7 @@ final class Ha {
             at = i;
         }
         if (probes.isEmpty()) return;
-        probes.sort((a, b) -> a.label.compareToIgnoreCase(b.label));
+        if (byLabel) probes.sort((a, b) -> a.label.compareToIgnoreCase(b.label));
         StringBuilder l = new StringBuilder(), v = new StringBuilder();
         if (alarm) {
             l.append("Alarm");
@@ -206,6 +229,10 @@ final class Ha {
             boolean motion = e.optBoolean("motion");
             return new Widget(id, name, "", motion ? "motion_sensor" : "cctv", motion ? ORANGE : BLUE, CAMERAS, "1");
         }
+        if ("climate".equals(domain)) {
+            return new Widget(id, name, missing ? "—" : thermostat(e, state), "thermostat",
+                    missing ? GREY : "heating".equals(str(e, "action")) ? ORANGE : BLUE, "", "1" + str(e, "device"));
+        }
         if ("lock".equals(domain)) {
             boolean locked = "locked".equals(state);
             return new Widget(id, name, missing ? "—" : capitalise(state), locked ? "lock" : "lock_open_variant",
@@ -223,6 +250,22 @@ final class Ha {
         // Trident probe opens the Apex page (ApexActivity).
         String page = solar ? SOLAR_PAGE : Apex.PAGE_TYPES.contains(str(e, "apex")) ? APEX : "";
         return new Widget(id, name, value, icon, solar ? AMBER : BLUE, page, "2" + str(e, "device"));
+    }
+
+    /** "68° → 70°": where it is and where it's set; "71.5° → 68–74°" for a range; "66° · Off" when it's off. */
+    static String thermostat(JSONObject e, String state) {
+        String cur = degrees(e, "cur");
+        String set = !degrees(e, "lo").isEmpty() && !degrees(e, "hi").isEmpty()
+                ? number(e.opt("lo")) + "–" + degrees(e, "hi") : degrees(e, "temp");
+        if ("off".equals(state) || set.isEmpty()) {
+            String mode = "off".equals(state) ? "Off" : capitalise(state.replace('_', ' '));
+            return cur.isEmpty() ? mode : cur + " · " + mode;
+        }
+        return cur.isEmpty() ? set : cur + " → " + set;
+    }
+
+    private static String degrees(JSONObject e, String key) {
+        return e.isNull(key) || !e.has(key) ? "" : number(e.opt(key)) + "°";
     }
 
     /** "Apex Temp" on the device "Apex" reads "Temp": the device name is on every chip of the group otherwise. */

@@ -11,6 +11,7 @@ local.properties
 # Configs hold a Home Assistant token: never commit one
 *.json
 !hacs.json
+!/package.json
 !custom_components/**/*.json
 
 # Python

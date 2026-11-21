@@ -33,21 +33,8 @@
     }
   },
   "options": {
-    "step": {
-      "init": {
-        "title": "TV Panel settings",
-        "description": "What the TV shows. Changes reach the TV within about 15 seconds.",
-        "data": {
-          "entities": "Chips",
-          "camera_order": "Camera grid order",
-          "solar": "Solar panel layout"
-        },
-        "data_description": {
-          "entities": "Shown in this order on the TV's home screen. Cameras become one chip that opens the camera grid; Apex probes become one tank chip.",
-          "camera_order": "Cameras listed here fill the grid first, left to right, top row first. The rest follow by name.",
-          "solar": "Optional. Where each inverter sits on your roof, for the solar page: arrays, each with a name and panels (inverter serial, x, y, w, h). The README has an example."
-        }
-      }
+    "abort": {
+      "use_page": "TV Panel's settings are on its own page, which shows live values and a preview of the TV's row: [open TV Panel]({url}), or choose TV Panel in the sidebar."
     }
   },
   "entity": {

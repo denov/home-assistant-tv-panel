@@ -11,8 +11,3 @@ CONF_USER_ID = "user_id"
 # The user the TV signs in as. It can't log in (no credentials) and only works from the local network.
 USER_NAME = "TV Panel"
 CLIENT_NAME = "TV Panel"
-
-# Options (Configure): the chips in order, the camera grid's order, and the solar page's panel layout.
-OPT_ENTITIES = "entities"
-OPT_CAMERA_ORDER = "camera_order"
-OPT_SOLAR = "solar"

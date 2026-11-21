@@ -50,21 +50,26 @@ as `homeassistant.local`, the TV uses the address the pairing came from instead.
 
 ## Configure in Home Assistant
 
-Open the TV Panel integration and press **Configure**:
+Choose **TV Panel** in the sidebar (admins only). With more than one TV, pick it at the top. The page shows a preview
+of the TV's row, live from your Home Assistant, and these settings:
 
-| Setting | What it does |
+| Section | What it does |
 |---|---|
-| **Chips** | The entities on the TV's home screen, in this order. Cameras become one chip that opens the camera grid, and Apex probes one tank chip, each where its first member is in the list. |
-| **Camera grid order** | Cameras listed here fill the grid first, left to right and top row first. The rest follow by name. |
+| **Chips** | What the TV's home screen shows, in order. Drag a chip, or use the arrows. Search shows each entity's current value, so it's easy to pick the right one. A chip's **label** replaces the entity's name on the TV. |
+| **Cameras** | The cameras the Cameras chip opens, in grid order: left to right, top row first. |
+| **Tank** | The Apex readings on the tank chip, one column each, in this order. |
 | **Solar panel layout** | Optional: where each inverter sits on the roof (see [Solar panel layout](#solar-panel-layout)). |
 
-The TV's device also has a **Widget row** switch: off hides the row. Automations can flip it like any switch.
-Rename an entity to change its chip's name; the device name is dropped from the front ("Apex Temp" → "Temp").
-Changes reach the TV within about 15 seconds.
+Adding a camera or an Apex probe as a chip puts it in its group, and adds the group's chip if it isn't there yet.
+A thermostat (a `climate` entity) shows where it is and where it's set: "68° → 70°", or "69° → 69–78°" for a range.
+Without a label, a chip uses the entity's name, with the device name dropped from the front ("Apex Temp" → "Temp").
+Press **Save**; the TV picks it up within about 15 seconds. **Configure** on the integration links to the same page.
 
-The first time you open Configure, it starts from the older setup: entities labelled **tv_widget**, and
-`input_text.tv_camera_order`. The switch starts from `input_boolean.tv_widgets`. Until Configure is saved, the app
-keeps using those, and it uses them too on a TV set up without the integration (see [Helper scripts](#helper-scripts)).
+The TV's device also has a **Widget row** switch: off hides the row. Automations can flip it like any switch.
+
+The first time, the page starts from the older setup: entities labelled **tv_widget**, and
+`input_text.tv_camera_order`. The switch starts from `input_boolean.tv_widgets`. Until you save, the app keeps using
+those, and it uses them too on a TV set up without the integration (see [Helper scripts](#helper-scripts)).
 
 The **Solar** chip (an Enphase Envoy power sensor) opens a solar page:
 - **Now:** grid, solar, battery and home, each with today's kWh.
@@ -80,14 +85,14 @@ The **Tank** chip (Neptune Apex probes: temperature, pH, salinity and Trident al
 
 It finds the probes by their `apex_probe_type` attribute, so there's nothing to set up.
 
-**Cameras:** label camera entities **tv_widget** and they become one icon-only chip. It shows a camera icon, or an
+**Cameras:** add cameras on the page and they become one icon-only chip. It shows a camera icon, or an
 orange motion icon while any of their devices' motion sensors is on. OK opens a 3×2 grid:
 - Each tile is a snapshot refreshed about every second.
 - Slots without a camera are drawn empty.
 - OK on a tile opens it full screen and live, from HA's MJPEG stream.
 - Full screen, Left and Right go to the other cameras, and Back returns to the grid.
 
-**Garage door:** label a garage cover **tv_widget** and it's an icon-only chip: blue when shut, orange when open or
+**Garage door:** add a garage cover as a chip and it's an icon-only chip: blue when shut, orange when open or
 moving, grey when Home Assistant can't see it. OK asks "Press OK again to open the garage"; a second OK within 3 s
 calls `cover.toggle`.
 
@@ -132,18 +137,15 @@ The app only fetches while the launcher asks, at most every 12 s, and has no bac
 
 ## Solar panel layout
 
-Paste it into **Configure** → **Solar panel layout**, as YAML or JSON:
+Paste it into the page's **Solar panel layout** box, as JSON:
 
-```yaml
-arrays:
-  - name: Array 1
-    panels:
-      - {id: "<inverter serial>", x: 0, y: 0, w: 2, h: 1}
+```json
+{"arrays": [{"name": "Array 1", "panels": [{"id": "<inverter serial>", "x": 0, "y": 0, "w": 2, "h": 1}]}]}
 ```
 
 Positions are in grid units: portrait is `w 1, h 2` (the default) and landscape is `w 2, h 1`. Arrays without
 `x`/`y` sit left to right with their tops aligned. Inverters that aren't listed go in an "Other" group. A layout in a
-pushed `config.json` (`"solar": {...}`) is used when Configure has none.
+pushed `config.json` (`"solar": {...}`) is used when the page has none.
 
 ## Helper scripts
 
