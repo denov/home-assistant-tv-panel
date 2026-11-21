@@ -33,6 +33,16 @@ export function number(raw) {
   return s.includes(".") ? s.replace(/0+$/, "").replace(/\.$/, "") : s;
 }
 
+/** A sensor's state as Home Assistant wrote it ("8.30" stays), rounded only when longer than number() (Ha.reading). */
+export function reading(state) {
+  const s = String(state).trim();
+  const dot = s.indexOf(".");
+  if (dot < 0 || /e/i.test(s)) return number(s);
+  const rounded = number(s);
+  const places = rounded.includes(".") ? rounded.length - rounded.indexOf(".") - 1 : 0;
+  return s.length - dot - 1 <= Math.max(places, 2) && Math.abs(Number(s)) < 100 ? s : rounded;
+}
+
 function deviceName(hass, entityId) {
   const id = hass.entities?.[entityId]?.device_id;
   const d = id && hass.devices?.[id];
@@ -56,7 +66,7 @@ export function stateText(hass, entityId) {
   const s = hass.states[entityId];
   if (!s || MISSING.has(s.state)) return "—";
   const unit = s.attributes.unit_of_measurement;
-  const v = Number.isNaN(Number(s.state)) ? capitalise(s.state.replace(/_/g, " ")) : s.state;
+  const v = Number.isNaN(Number(s.state)) ? capitalise(s.state.replace(/_/g, " ")) : reading(s.state);
   return unit ? `${v} ${unit}` : v;
 }
 
@@ -149,6 +159,98 @@ export function search(hass, query, exclude, domain = null, keep = null) {
     .slice(0, 40);
 }
 
+// ---- what OK does (model.py's default_ok / resolve_ok: change both together) ----------------------------------
+
+/** What "toggle" works on: model.py's TOGGLE_DOMAINS (a test checks they match). */
+export const TOGGLE_DOMAINS = ["automation", "climate", "cover", "fan", "humidifier", "input_boolean", "light", "lock",
+  "media_player", "remote", "siren", "switch", "valve"];
+export const canToggle = (id) => TOGGLE_DOMAINS.includes(String(id).split(".")[0]);
+
+const isGarage = (hass, id) => hass.states[id]?.attributes?.device_class === "garage"
+  || (id + friendly(hass, id)).toLowerCase().includes("garage");
+const isSolar = (hass, id) => ["power", "energy"].includes(hass.states[id]?.attributes?.device_class)
+  && /production|solar|pv/.test(id);
+
+/** What OK did before it could be set: the chip's page, the garage door's toggle (pressed twice), or nothing. */
+export function defaultOk(hass, chip) {
+  if (chip.type === "cameras") return { action: "page", page: "cameras" };
+  if (chip.type === "tank") return { action: "page", page: "tank" };
+  const id = chip.entity;
+  const domain = id.split(".")[0];
+  if (domain === "weather") return { action: "page", page: "weather" };
+  if (domain === "camera") return { action: "page", page: "cameras" };
+  if (hass.states[id] && isProbe(hass.states[id])) return { action: "page", page: "tank" };
+  if (domain === "sensor" && isSolar(hass, id)) return { action: "page", page: "solar" };
+  if (domain === "cover" && isGarage(hass, id)) return { action: "toggle", entity: id, confirm: true };
+  return { action: "none" };
+}
+
+/** What OK on this chip does, in full: its own setting with the gaps filled, or the default. */
+export function resolveOk(hass, chip) {
+  const ok = chip.ok;
+  if (!ok || ok.action === "default") return defaultOk(hass, chip);
+  const out = { ...ok };
+  if (out.action === "toggle" && !out.entity) {
+    // Nothing chosen: the chip's own entity, if it can be toggled. A group, a sensor or weather can't.
+    if (chip.type !== "entity" || !canToggle(chip.entity)) return { action: "none" };
+    out.entity = chip.entity;
+  }
+  if (["toggle", "run", "perform"].includes(out.action) && out.confirm === undefined) out.confirm = false;
+  return out;
+}
+
+const PAGE_NAMES = { weather: "the weather page", solar: "the solar page", tank: "the tank page", cameras: "the camera grid" };
+
+/** "OK opens the weather page", "OK twice opens or closes Garage Door", "OK does nothing". */
+export function describeOk(hass, chip) {
+  const ok = resolveOk(hass, chip);
+  const ok_ = ok.confirm ? "OK twice" : "OK";
+  // The chip's own entity by the name the TV shows for the chip (its label, or "Garage"); another by its own name.
+  const name = (id) => (chip.type === "entity" && id === chip.entity && preview(hass, chip, {}).label)
+    || friendly(hass, id) || id;
+  switch (ok.action) {
+    case "page":
+      if (ok.page === "camera") return ok.camera ? `OK opens ${name(ok.camera)} full screen` : "OK opens a camera: choose which";
+      return PAGE_NAMES[ok.page] ? `OK opens ${PAGE_NAMES[ok.page]}` : "OK opens a page: choose which";
+    case "toggle": {
+      const d = ok.entity.split(".")[0];
+      const verb = d === "cover" ? "opens or closes" : d === "lock" ? "locks or unlocks" : "toggles";
+      return `${ok_} ${verb} ${name(ok.entity)}`;
+    }
+    case "run":
+      return ok.entity ? `${ok_} runs ${name(ok.entity)}` : `${ok_} runs a script or scene: choose which`;
+    case "perform":
+      return ok.perform_action ? `${ok_} performs ${ok.perform_action}` : `${ok_} performs an action: choose which`;
+    default:
+      return chip.ok?.action === "toggle" ? "OK does nothing: choose what to toggle" : "OK does nothing";
+  }
+}
+
+/** The editor's Default choice: "Default: opens or closes Garage (press twice)". */
+export function defaultChoice(hass, chip) {
+  const say = describeOk(hass, { ...chip, ok: undefined });
+  const twice = say.startsWith("OK twice ");
+  return `Default: ${say.replace(/^OK (twice )?/, "")}${twice ? " (press twice)" : ""}`;
+}
+
+/**
+ * The chip's ok after choosing another kind of action. It keeps asking twice if what it replaces did (the garage's
+ * default does), and a toggle starts on the chip's own entity only when that can be toggled.
+ */
+export function switchOk(hass, chip, action) {
+  if (action === "default" || action === "none") return { action };
+  const before = resolveOk(hass, chip);
+  const next = { action };
+  if (before.confirm) next.confirm = true;
+  if (action === "toggle" && chip.type === "entity" && canToggle(chip.entity)) next.entity = chip.entity;
+  return next;
+}
+
+/** Whether the TV shows its row: on unless the TV's Widget row switch is off. */
+export function rowOn(hass, switchId) {
+  return hass.states[switchId]?.state !== "off";
+}
+
 /** A copy of the list with one item moved; out of range leaves it as it was. */
 export function move(list, from, to) {
   if (from < 0 || from >= list.length || to < 0 || to >= list.length) return list.slice();
@@ -178,6 +280,7 @@ export function toSave(state) {
     chips: state.chips.map((c) => {
       const out = c.type === "entity" ? { type: "entity", entity: c.entity } : { type: c.type };
       if (c.label && c.label.trim()) out.label = c.label.trim();
+      if (c.ok && c.ok.action !== "default") out.ok = c.ok;
       return out;
     }),
     cameras: state.cameras.slice(),

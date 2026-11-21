@@ -31,6 +31,11 @@ final class SettingsSource {
         return last;
     }
 
+    /** The last answer, without asking: for the main thread (OpenActivity). */
+    static Settings cached() {
+        return last;
+    }
+
     /** The address or token changed, or the person changed something: read again next time. */
     static void invalidate() {
         at = -1;

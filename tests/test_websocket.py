@@ -16,7 +16,9 @@ async def test_lists_the_tvs(hass: HomeAssistant, hass_ws_client) -> None:
     await ws.send_json({"id": 1, "type": "tv_panel/tvs"})
     msg = await ws.receive_json()
     assert msg["success"]
-    assert msg["result"] == [{"entry_id": entry.entry_id, "title": "BRAVIA"}]
+    switch = next(st.entity_id for st in hass.states.async_all("switch"))
+    # The page shows each TV's Widget row switch, so it says which one is whose.
+    assert msg["result"] == [{"entry_id": entry.entry_id, "title": "BRAVIA", "row_switch": switch}]
 
 
 async def test_reads_settings_with_a_saved_flag(hass: HomeAssistant, hass_ws_client) -> None:

@@ -32,5 +32,8 @@ class TvPanelConfigView(HomeAssistantView):
             if not model.saved(entry.options):
                 return self.json({k: None for k in (*model.KEYS, "entities", "camera_order")} | {"row": row})
             s = model.settings(hass, entry.options)
-            return self.json(s | {"entities": model.flatten(s), "camera_order": s["cameras"], "row": row})
+            chips = [{k: v for k, v in c.items() if k != "ok"} | {"ok": model.resolve_ok(hass, c)} for c in s["chips"]]
+            return self.json(
+                s | {"chips": chips, "entities": model.flatten(s), "camera_order": s["cameras"], "row": row}
+            )
         return self.json_message("Not a TV Panel TV", HTTPStatus.NOT_FOUND)

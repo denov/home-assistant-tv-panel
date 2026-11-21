@@ -76,6 +76,36 @@ public class WidgetProvider extends ContentProvider {
         });
     }
 
+    /**
+     * OK on a chip the integration acts on (Ha.PRESS). The integration's message ("Garage Door: opening") shows as a
+     * toast, and the chips are read again so a toggled chip changes colour at once.
+     */
+    static void press(Context ctx, String key) {
+        post(ctx, Ha.pressBody(key), true);
+    }
+
+    /** OK on a chip that opened a page ("page") or does nothing ("none"): only the integration's event. */
+    static void event(Context ctx, String key, String action) {
+        post(ctx, Ha.pressBody(key, action), false);
+    }
+
+    private static void post(Context ctx, String body, boolean answer) {
+        actions.execute(() -> {
+            Config c = Config.load(ctx);
+            if (!c.complete()) return;
+            HaClient.Reply r = new HaClient(c.url, c.token).post("/api/tv_panel/press", body);
+            if (!answer) return;
+            String say = r.ok() ? Ha.pressMessage(r.body)
+                    : r.code == 0 ? "Couldn't reach Home Assistant." : "Home Assistant answered " + r.code + ".";
+            if (!say.isEmpty()) {
+                new android.os.Handler(android.os.Looper.getMainLooper()).post(() ->
+                        android.widget.Toast.makeText(ctx, say, android.widget.Toast.LENGTH_SHORT).show());
+            }
+            invalidate();
+            ctx.getContentResolver().notifyChange(uri(ctx), null);
+        });
+    }
+
     static List<Ha.Widget> current() {
         return rows;
     }

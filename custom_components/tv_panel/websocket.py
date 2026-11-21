@@ -6,10 +6,11 @@ from typing import Any
 
 from homeassistant.components import websocket_api
 from homeassistant.core import HomeAssistant, callback
+from homeassistant.helpers import entity_registry as er
 import voluptuous as vol
 
 from . import model
-from .const import DOMAIN
+from .const import CONF_TV_ID, DOMAIN
 
 
 @callback
@@ -31,8 +32,18 @@ def _entry(hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg:
 @websocket_api.websocket_command({vol.Required("type"): "tv_panel/tvs"})
 @callback
 def ws_tvs(hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict[str, Any]) -> None:
+    reg = er.async_get(hass)
     connection.send_result(
-        msg["id"], [{"entry_id": e.entry_id, "title": e.title} for e in hass.config_entries.async_entries(DOMAIN)]
+        msg["id"],
+        [
+            {
+                "entry_id": e.entry_id,
+                "title": e.title,
+                # The Widget row switch (switch.py's unique id), or None before the entry has set up.
+                "row_switch": reg.async_get_entity_id("switch", DOMAIN, f"{e.data[CONF_TV_ID]}_widget_row"),
+            }
+            for e in hass.config_entries.async_entries(DOMAIN)
+        ],
     )
 
 

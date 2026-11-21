@@ -30,7 +30,12 @@ async def test_the_tv_gets_its_settings(hass: HomeAssistant, hass_client_no_auth
 
     assert r.status == HTTPStatus.OK
     body = await r.json()
-    assert body["chips"] == OPTIONS["chips"]
+    # Each chip comes with what OK does, worked out: the TV doesn't guess.
+    assert body["chips"] == [
+        {"type": "entity", "entity": "weather.home", "ok": {"action": "page", "page": "weather"}},
+        {"type": "cameras", "ok": {"action": "page", "page": "cameras"}},
+        {"type": "entity", "entity": "climate.hall", "label": "Hall", "ok": {"action": "none"}},
+    ]
     assert body["cameras"] == ["camera.b", "camera.a"]
     assert body["tank"] == []
     assert body["solar"] == {"arrays": []}
@@ -44,7 +49,7 @@ async def test_02_settings_are_served_in_the_new_shape(hass: HomeAssistant, hass
     hass.states.async_set("camera.a", "idle")
     _, token = await paired_tv(hass, {"entities": ["weather.home", "camera.a"], "camera_order": ["camera.a"]})
     body = await (await _get(hass_client_no_auth, token)).json()
-    assert body["chips"] == [{"type": "entity", "entity": "weather.home"}, {"type": "cameras"}]
+    assert [c["type"] for c in body["chips"]] == ["entity", "cameras"]
     assert body["entities"] == ["weather.home", "camera.a"]
 
 

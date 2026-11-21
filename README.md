@@ -7,6 +7,10 @@ Brought to you by [Fullstack Systems](https://fullstacksystems.com).
 Home Assistant on an Android TV's home screen: a row of live chips under the clock (weather, cameras, garage door, a
 reef tank, solar), and full pages for weather, solar, the tank and cameras that you can also open by voice.
 
+The reef tank chip and page are made for our [Neptune Apex integration](https://github.com/denov/home-assistant-apex-neptune): with it installed, the tank's
+probes, Trident results, dosing and alarm show up on the TV with nothing to set up, and its feed buttons can be
+pressed from the remote (see [What OK does](#what-ok-does)).
+
 Two parts, both in this repo:
 
 - **The TV Panel integration** for Home Assistant (`custom_components/tv_panel`). It pairs the TV: the TV shows a
@@ -65,7 +69,44 @@ A thermostat (a `climate` entity) shows where it is and where it's set: "68° �
 Without a label, a chip uses the entity's name, with the device name dropped from the front ("Apex Temp" → "Temp").
 Press **Save**; the TV picks it up within about 15 seconds. **Configure** on the integration links to the same page.
 
-The TV's device also has a **Widget row** switch: off hides the row. Automations can flip it like any switch.
+### What OK does
+
+Under each chip, the page says what OK on it does: "OK opens the weather page", "OK twice opens or closes Garage
+Door", "OK does nothing". **Change** sets it:
+
+| On OK | |
+|---|---|
+| **Default** | What TV Panel always did: weather, solar, the tank and the cameras open their pages, a garage door opens or closes when OK is pressed twice, anything else does nothing. |
+| **Do nothing** | The chip only shows its value. |
+| **Open a page** | Weather, solar, the tank, the camera grid, or one camera full screen. |
+| **Toggle something** | A light, switch, fan, cover, lock and so on: the chip's own entity or another. |
+| **Run a script or scene** | |
+| **Perform an action** | Any action, such as `light.turn_on`, with an optional target and data (JSON). |
+
+Toggles, scripts and actions can ask first: **Press OK twice** makes the TV show "Press OK again" and wait 3 seconds
+for the second press. The TV doesn't call these itself: it tells the integration which chip was pressed, and the
+integration does what the chip's settings say, as the TV's user, then shows the result on the TV ("Garage Door:
+opening").
+
+For example, with the [Neptune Apex integration](https://github.com/denov/home-assistant-apex-neptune), feed the tank from the couch: set the Tank chip to
+**Perform an action**, `button.press` with the target `button.apex_feed_a` (your Feed A button), and tick **Press OK
+twice**, since a feed cycle may run an auto feeder. One OK on the TV asks; the second starts Feed A, and the TV says so.
+The chip still shows the readings, and the tank page still opens
+[by voice](#open-a-page-by-voice-home-assistant-assist).
+
+Every press also fires the event `tv_panel_chip_pressed`, with `chip` (the entity id, or `cameras` / `apex` for the
+groups), `tv`, `entry_id` and `action`, so an automation can act on any chip, even one set to do nothing:
+
+```yaml
+triggers:
+  - trigger: event
+    event_type: tv_panel_chip_pressed
+    event_data:
+      chip: sensor.hall_temperature
+```
+
+The TV's device also has a **Widget row** switch: off hides the row. The page has it at the top, and automations can
+flip it like any switch.
 
 The first time, the page starts from the older setup: entities labelled **tv_widget**, and
 `input_text.tv_camera_order`. The switch starts from `input_boolean.tv_widgets`. Until you save, the app keeps using
@@ -77,13 +118,14 @@ The **Solar** chip (an Enphase Envoy power sensor) opens a solar page:
 - **Today:** a chart per 15 minutes.
 - **Totals:** today, this week and this month.
 
-The **Tank** chip (Neptune Apex probes: temperature, pH, salinity and Trident alkalinity, calcium and magnesium, merged into one chip with a column per reading; the fish turns red while the Apex alarm is on) opens a reef tank page:
+The **Tank** chip (Neptune Apex probes from the [Neptune Apex integration](https://github.com/denov/home-assistant-apex-neptune): temperature, pH, salinity and Trident alkalinity, calcium and magnesium, merged into one chip with a column per reading; the fish turns red while the Apex alarm is on) opens a reef tank page:
 - **Water:** both probes of each kind.
 - **Trident:** the latest results.
 - **Reagents & dosing:** reagents with tests left, waste % full, and DOS containers.
 - **Trends:** temperature, pH and salinity over 24 hours; alkalinity, calcium and magnesium over 7 days.
 
-It finds the probes by their `apex_probe_type` attribute, so there's nothing to set up.
+It finds the probes by the `apex_probe_type` attribute the Neptune Apex integration gives them, and the Trident,
+DOS and alarm by that integration's entity names, so there's nothing to set up.
 
 **Cameras:** add cameras on the page and they become one icon-only chip. It shows a camera icon, or an
 orange motion icon while any of their devices' motion sensors is on. OK opens a 3×2 grid:

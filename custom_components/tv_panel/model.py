@@ -84,12 +84,143 @@ def _label(value: Any) -> str | None:
     return text or None
 
 
+PAGES = ("weather", "solar", "tank", "cameras")
+# What "toggle" works on: domains with a toggle service, plus locks (press.py locks or unlocks).
+# chips.js has the same list, as TOGGLE_DOMAINS.
+TOGGLE_DOMAINS = (
+    "automation", "climate", "cover", "fan", "humidifier", "input_boolean", "light", "lock", "media_player", "remote",
+    "siren", "switch", "valve",
+)
+_CONFIRM = vol.Optional("confirm", default=False)
+
+
+def can_toggle(entity_id: str) -> bool:
+    return entity_id.split(".")[0] in TOGGLE_DOMAINS
+
+
+def _toggleable(value: Any) -> str:
+    entity_id = cv.entity_id(value)
+    if not can_toggle(entity_id):
+        raise vol.Invalid(f"{entity_id} can't be toggled")
+    return entity_id
+
+
+def _camera_page(value: dict[str, Any]) -> dict[str, Any]:
+    if value["page"] == "camera" and "camera" not in value:
+        raise vol.Invalid("choose the camera to open", path=["camera"])
+    return value
+
+
+# What OK on a chip does. Without one (or "default"), what TV Panel always did for that kind of chip: see default_ok.
+# Checked by its action, so a mistake names what's missing rather than listing every kind of action.
+OK = cv.key_value_schemas(
+    "action",
+    {
+        "default": vol.Schema({vol.Required("action"): "default"}),
+        "none": vol.Schema({vol.Required("action"): "none"}),
+        "page": vol.All(
+            vol.Schema(
+                {
+                    vol.Required("action"): "page",
+                    vol.Required("page"): vol.In((*PAGES, "camera")),
+                    vol.Optional("camera"): cv.entity_domain("camera"),
+                }
+            ),
+            _camera_page,
+        ),
+        "toggle": vol.Schema(
+            {vol.Required("action"): "toggle", vol.Optional("entity"): _toggleable, _CONFIRM: cv.boolean}
+        ),
+        "run": vol.Schema(
+            {
+                vol.Required("action"): "run",
+                vol.Required("entity"): cv.entity_domain(["script", "scene"]),
+                _CONFIRM: cv.boolean,
+            }
+        ),
+        "perform": vol.Schema(
+            {
+                vol.Required("action"): "perform",
+                vol.Required("perform_action"): cv.service,
+                vol.Optional("target"): {vol.Optional("entity_id"): cv.comp_entity_ids},
+                vol.Optional("data"): dict,
+                _CONFIRM: cv.boolean,
+            }
+        ),
+    },
+)
+
 CHIP = vol.Schema(
     vol.Any(
-        {vol.Required("type"): "entity", vol.Required("entity"): cv.entity_id, vol.Optional("label"): _label},
-        {vol.Required("type"): vol.In(GROUPS), vol.Optional("label"): _label},
+        {
+            vol.Required("type"): "entity",
+            vol.Required("entity"): cv.entity_id,
+            vol.Optional("label"): _label,
+            vol.Optional("ok"): OK,
+        },
+        {vol.Required("type"): vol.In(GROUPS), vol.Optional("label"): _label, vol.Optional("ok"): OK},
     )
 )
+
+
+def chip_key(chip: dict[str, Any]) -> str:
+    """The key the TV knows a chip by: its entity id, or "cameras" and "apex" for the groups."""
+    return chip["entity"] if chip["type"] == "entity" else "apex" if chip["type"] == "tank" else "cameras"
+
+
+def is_garage(hass: HomeAssistant, entity_id: str) -> bool:
+    """As the app decides (Ha.widget): the device class, or "garage" in the id or the name."""
+    state = hass.states.get(entity_id)
+    return (state is not None and state.attributes.get("device_class") == "garage") or "garage" in (
+        entity_id + _name(hass, entity_id)
+    ).lower()
+
+
+def is_solar(hass: HomeAssistant, entity_id: str) -> bool:
+    state = hass.states.get(entity_id)
+    return (
+        state is not None
+        and state.attributes.get("device_class") in ("power", "energy")
+        and any(w in entity_id for w in ("production", "solar", "pv"))
+    )
+
+
+def default_ok(hass: HomeAssistant, chip: dict[str, Any]) -> dict[str, Any]:
+    """What OK did before it could be set: the chip's page, the garage door's toggle (pressed twice), or nothing.
+    chips.js defaultOk() mirrors it for the page."""
+    if chip["type"] == "cameras":
+        return {"action": "page", "page": "cameras"}
+    if chip["type"] == "tank":
+        return {"action": "page", "page": "tank"}
+    e = chip["entity"]
+    domain = e.split(".")[0]
+    if domain == "weather":
+        return {"action": "page", "page": "weather"}
+    if domain == "camera":
+        return {"action": "page", "page": "cameras"}
+    if _is_probe(hass, e):
+        return {"action": "page", "page": "tank"}
+    if domain == "sensor" and is_solar(hass, e):
+        return {"action": "page", "page": "solar"}
+    if domain == "cover" and is_garage(hass, e):
+        return {"action": "toggle", "entity": e, "confirm": True}
+    return {"action": "none"}
+
+
+def resolve_ok(hass: HomeAssistant, chip: dict[str, Any]) -> dict[str, Any]:
+    """What OK on this chip does, in full: its own setting with the gaps filled, or the default."""
+    ok = chip.get("ok")
+    if not ok or ok.get("action") == "default":
+        return default_ok(hass, chip)
+    ok = dict(ok)
+    if ok["action"] == "toggle" and "entity" not in ok:
+        # Nothing chosen: the chip's own entity, if it can be toggled. A group, a sensor or weather can't.
+        if chip["type"] != "entity" or not can_toggle(chip["entity"]):
+            return {"action": "none"}
+        ok["entity"] = chip["entity"]
+    if ok["action"] in ("toggle", "run", "perform"):
+        ok.setdefault("confirm", False)
+    return ok
 
 
 def _solar(value: Any) -> Any:
@@ -116,6 +247,14 @@ def validate(data: dict[str, Any]) -> dict[str, Any]:
     chips = []
     for chip in s["chips"]:
         chip = {k: v for k, v in chip.items() if not (k == "label" and v is None)}
+        if chip.get("ok", {}).get("action") == "default":
+            del chip["ok"]
+        ok = chip.get("ok", {})
+        if ok.get("action") == "toggle" and "entity" not in ok and not (
+            chip["type"] == "entity" and can_toggle(chip["entity"])
+        ):
+            what = chip.get("entity", chip["type"])
+            raise vol.Invalid(f"{what} can't be toggled: choose what to toggle")
         if chip["type"] in GROUPS and any(c["type"] == chip["type"] for c in chips):
             raise vol.Invalid(f"only one {chip['type']} chip")
         chips.append(chip)

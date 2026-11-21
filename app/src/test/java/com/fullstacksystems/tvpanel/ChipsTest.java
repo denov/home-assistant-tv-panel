@@ -112,4 +112,77 @@ public class ChipsTest {
                 item("sensor.apex_ph", "Apex pH", "8.29").put("device", "Apex").put("apex", "pH")), s);
         assertEquals("pH\tTemp", w.get(0).label);
     }
+
+    private static final String OKS = "{\"chips\": ["
+            + "{\"type\": \"entity\", \"entity\": \"weather.home\", \"ok\": {\"action\": \"none\"}},"
+            + "{\"type\": \"entity\", \"entity\": \"sensor.x\", \"ok\": {\"action\": \"page\", \"page\": \"solar\"}},"
+            + "{\"type\": \"entity\", \"entity\": \"light.hall\", \"ok\": {\"action\": \"toggle\", \"entity\": \"light.hall\", \"confirm\": true}},"
+            + "{\"type\": \"entity\", \"entity\": \"sensor.y\", \"ok\": {\"action\": \"page\", \"page\": \"camera\", \"camera\": \"camera.drive\"}},"
+            + "{\"type\": \"tank\", \"ok\": {\"action\": \"run\", \"entity\": \"script.feed\", \"confirm\": false}}],"
+            + " \"tank\": [\"sensor.apex_ph\"], \"entities\": [\"weather.home\", \"sensor.x\", \"light.hall\", \"sensor.y\", \"sensor.apex_ph\"]}";
+
+    @Test
+    public void whatOkDoesComesFromTheIntegration() throws Exception {
+        Settings s = Settings.parse(OKS);
+        List<Ha.Widget> w = Ha.parseWidgets(reply(
+                item("weather.home", "Home", "sunny").put("temp", 60),
+                item("sensor.x", "X", "1"),
+                item("light.hall", "Hall", "on"),
+                item("sensor.y", "Y", "2"),
+                item("sensor.apex_ph", "Apex pH", "8.2").put("device", "Apex").put("apex", "pH")), s);
+        // Weather would open its page; here OK does nothing, but the press still reaches the integration, for its
+        // event (automations can act on any chip).
+        assertEquals(Ha.EVENT_ONLY, w.get(0).page);
+        assertEquals(true, w.get(0).open);
+        assertEquals(Ha.SOLAR_PAGE, w.get(1).page);
+        // A toggle, a script or an action is a press the integration carries out.
+        assertEquals(Ha.PRESS, w.get(2).page);
+        assertEquals(true, s.oks.get("light.hall").confirm);
+        assertEquals("camera/camera.drive", w.get(3).page);
+        assertEquals(Ha.PRESS, w.get(4).page);
+        assertFalse(s.oks.get(Ha.APEX).confirm);
+    }
+
+    @Test
+    public void withoutTheIntegrationsAnswerOkStaysAsItWas() throws Exception {
+        Settings s = Settings.parse("{\"entities\": [\"weather.home\"], \"row\": true}");
+        assertEquals(true, s.oks.isEmpty());
+        List<Ha.Widget> w = Ha.parseWidgets(reply(item("weather.home", "Home", "sunny").put("temp", 60)), s);
+        assertEquals(Ha.WEATHER, w.get(0).page);
+    }
+
+    @Test
+    public void thePressAndItsAnswer() throws Exception {
+        assertEquals("light.hall", new JSONObject(Ha.pressBody("light.hall")).getString("key"));
+        assertEquals("Hall: turning on", Ha.pressMessage("{\"ok\": true, \"message\": \"Hall: turning on\"}"));
+        assertEquals("Hall: no such service", Ha.pressMessage("{\"ok\": false, \"message\": \"Hall: no such service\"}"));
+        // A page, or nothing to do: no toast.
+        assertEquals("", Ha.pressMessage("{\"ok\": true, \"page\": \"tank\"}"));
+        assertEquals("", Ha.pressMessage("{\"ok\": true}"));
+        assertEquals("Home Assistant's answer made no sense.", Ha.pressMessage("nope"));
+    }
+
+    @Test
+    public void aPressForTheEventOnlySaysSo() throws Exception {
+        // The integration fires the event and does nothing else: the TV may not have caught up with a change to the
+        // chip, and must never toggle a garage door it thinks is a page.
+        JSONObject page = new JSONObject(Ha.pressBody("sensor.x", "page"));
+        assertEquals("sensor.x", page.getString("key"));
+        assertEquals(true, page.getBoolean("event_only"));
+        assertEquals("page", page.getString("action"));
+        assertFalse(new JSONObject(Ha.pressBody("light.hall")).has("event_only"));
+    }
+
+    @Test
+    public void afterARestartOnlyKnownPagesAreGuessed() {
+        // No chips yet (the app was restarted): a guess from the key, and none for a chip that could do anything.
+        assertEquals(Ha.WEATHER, Ha.guessPage("weather.home"));
+        assertEquals(Ha.CAMERAS, Ha.guessPage(Ha.CAMERAS));
+        assertEquals(Ha.CAMERAS, Ha.guessPage("camera.drive"));
+        assertEquals(Ha.APEX, Ha.guessPage(Ha.APEX));
+        assertEquals(Ha.APEX, Ha.guessPage("sensor.apex_temp"));
+        assertEquals(Ha.SOLAR_PAGE, Ha.guessPage("sensor.envoy_123_current_power_production"));
+        assertEquals("", Ha.guessPage("sensor.hall_temperature"));
+        assertEquals("", Ha.guessPage("cover.garage_door"));
+    }
 }

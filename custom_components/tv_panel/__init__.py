@@ -19,6 +19,7 @@ from homeassistant.helpers.typing import ConfigType
 from .const import CONF_TV_ID, CONF_USER_ID, DOMAIN
 from .pairing import async_remove_user
 from .panel import async_register as async_register_panel
+from .press import TvPanelPressView
 from .view import TvPanelConfigView
 from .websocket import async_register as async_register_websocket
 
@@ -39,6 +40,7 @@ type TvPanelConfigEntry = ConfigEntry[TvPanelData]
 async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     """The TV's settings endpoint (each TV with its own token), and the page that edits the settings."""
     hass.http.register_view(TvPanelConfigView())
+    hass.http.register_view(TvPanelPressView())
     async_register_websocket(hass)
     await async_register_panel(hass)
     return True

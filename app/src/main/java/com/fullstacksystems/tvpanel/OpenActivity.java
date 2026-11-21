@@ -32,13 +32,41 @@ public class OpenActivity extends Activity {
             }
         } else {
             key = getIntent().getStringExtra(WeatherActivity.EXTRA_KEY);
-            // The garage door chip has no page: OK twice within CONFIRM_MS toggles the door, and Home stays on screen.
-            if (key != null && key.startsWith("cover.") && Ha.TOGGLE.equals(pageOfChip(key))) {
-                confirmToggle(key);
+            String chipPage = key == null ? "" : pageOfChip(key);
+            Settings.Ok ok = key == null ? null : SettingsSource.cached().oks.get(key);
+            // A press the integration carries out (a toggle, a script, an action): Home stays on screen.
+            if (Ha.PRESS.equals(chipPage)) {
+                String k = key;
+                Runnable go = () -> WidgetProvider.press(getApplicationContext(), k);
+                // Not knowing whether it should ask (no settings yet), it asks: it may be a garage door.
+                if (ok == null || ok.confirm) confirm(key, go);
+                else go.run();
                 finish();
                 return;
             }
-            page = key == null ? null : pageFor(pageOfChip(key));
+            // Without the integration's settings: the garage door chip has no page, and OK twice within CONFIRM_MS
+            // toggles the door.
+            if (key != null && key.startsWith("cover.") && Ha.TOGGLE.equals(chipPage)) {
+                String k = key;
+                confirm(key, () -> WidgetProvider.toggle(getApplicationContext(), k));
+                finish();
+                return;
+            }
+            // A chip set to do nothing: only the integration's event, for automations.
+            if (Ha.EVENT_ONLY.equals(chipPage)) {
+                WidgetProvider.event(getApplicationContext(), key, "none");
+                finish();
+                return;
+            }
+            // A page: the TV opens it, and tells the integration, so automations see the press too. Only the
+            // event: what the chip is set to in the integration now is not carried out.
+            if (ok != null) WidgetProvider.event(getApplicationContext(), key, "page");
+            if (chipPage.startsWith(Ha.CAMERA_PAGE)) {
+                page = CameraViewActivity.class;
+                key = chipPage.substring(Ha.CAMERA_PAGE.length());
+            } else {
+                page = key == null ? null : pageFor(chipPage);
+            }
         }
         if (page == null) { finish(); return; }
         Intent go = new Intent(this, page).putExtra(WeatherActivity.EXTRA_KEY, key);
@@ -54,26 +82,25 @@ public class OpenActivity extends Activity {
     private static String armedKey;
     private static long armedAt;
 
-    /** The first OK only asks ("Press OK again to open the garage"); the second, in time, toggles the door. */
-    private void confirmToggle(String key) {
+    /** The first OK only asks ("Press OK again to open the garage"); the second, in time, does it. */
+    private void confirm(String key, Runnable action) {
         long now = android.os.SystemClock.elapsedRealtime();
         if (key.equals(armedKey) && now - armedAt < CONFIRM_MS) {
             armedKey = null;
-            WidgetProvider.toggle(getApplicationContext(), key);
+            action.run();
             return;
         }
         armedKey = key;
         armedAt = now;
-        String label = "the door";
-        boolean shut = false;
+        String ask = "Press OK again";
         for (Ha.Widget w : WidgetProvider.current()) {
-            if (w.key.equals(key)) {
-                label = "the " + w.label.toLowerCase(java.util.Locale.ROOT);
-                shut = "garage".equals(w.icon);
-            }
+            if (!w.key.equals(key)) continue;
+            String label = w.label.toLowerCase(java.util.Locale.ROOT);
+            boolean garage = w.icon.startsWith("garage");
+            ask = garage ? "Press OK again to " + ("garage".equals(w.icon) ? "open" : "close") + " the " + label
+                    : "Press OK again: " + w.label;
         }
-        android.widget.Toast.makeText(getApplicationContext(),
-                "Press OK again to " + (shut ? "open " : "close ") + label, android.widget.Toast.LENGTH_SHORT).show();
+        android.widget.Toast.makeText(getApplicationContext(), ask, android.widget.Toast.LENGTH_SHORT).show();
     }
 
     private static Class<?> pageFor(String page) {
@@ -87,11 +114,7 @@ public class OpenActivity extends Activity {
     /** The page the chip says it opens; when the app was restarted and has no chips yet, a guess from the id. */
     static String pageOfChip(String key) {
         for (Ha.Widget w : WidgetProvider.current()) if (w.key.equals(key)) return w.page;
-        if (key.startsWith("weather.")) return Ha.WEATHER;
-        if (key.equals(Ha.CAMERAS) || key.startsWith("camera.")) return Ha.CAMERAS;
-        if (key.equals(Ha.APEX) || key.startsWith("sensor.apex_")) return Ha.APEX;
-        if (key.startsWith("sensor.")) return Ha.SOLAR_PAGE;
-        return "";
+        return Ha.guessPage(key);
     }
 
     /** The weather, solar, Apex and camera pages that are open now. They add themselves in onCreate and leave in onDestroy. */

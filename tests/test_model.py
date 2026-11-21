@@ -108,3 +108,121 @@ def test_validate_cleans_and_rejects() -> None:
     ):
         with pytest.raises(vol.Invalid):
             model.validate(bad)
+
+
+async def test_default_ok_is_what_the_tv_did_before(hass: HomeAssistant) -> None:
+    """With no "ok" of its own, a chip does what TV Panel always did for its kind of entity."""
+    hass.states.async_set("cover.garage_door", "closed", {"device_class": "garage", "friendly_name": "Garage Door"})
+    hass.states.async_set("cover.blind", "open", {"friendly_name": "Blind"})
+    hass.states.async_set(
+        "sensor.envoy_current_power_production", "1.2", {"device_class": "power", "unit_of_measurement": "kW"}
+    )
+    hass.states.async_set("sensor.hall_temperature", "68")
+
+    def ok(chip):
+        return model.resolve_ok(hass, chip)
+
+    assert ok({"type": "entity", "entity": "weather.home"}) == {"action": "page", "page": "weather"}
+    assert ok({"type": "cameras"}) == {"action": "page", "page": "cameras"}
+    assert ok({"type": "tank"}) == {"action": "page", "page": "tank"}
+    assert ok({"type": "entity", "entity": "sensor.envoy_current_power_production"}) == {
+        "action": "page",
+        "page": "solar",
+    }
+    assert ok({"type": "entity", "entity": "cover.garage_door"}) == {
+        "action": "toggle",
+        "entity": "cover.garage_door",
+        "confirm": True,
+    }
+    assert ok({"type": "entity", "entity": "cover.blind"}) == {"action": "none"}
+    assert ok({"type": "entity", "entity": "sensor.hall_temperature"}) == {"action": "none"}
+
+
+async def test_an_ok_of_its_own_wins_and_fills_in(hass: HomeAssistant) -> None:
+    # A toggle without an entity toggles the chip's own; confirm defaults to off.
+    assert model.resolve_ok(hass, {"type": "entity", "entity": "light.hall", "ok": {"action": "toggle"}}) == {
+        "action": "toggle",
+        "entity": "light.hall",
+        "confirm": False,
+    }
+    assert model.resolve_ok(hass, {"type": "entity", "entity": "weather.home", "ok": {"action": "none"}}) == {
+        "action": "none"
+    }
+    run = {"action": "run", "entity": "script.good_night", "confirm": True}
+    assert model.resolve_ok(hass, {"type": "tank", "ok": run}) == run
+
+
+def test_validate_takes_the_ok_choices() -> None:
+    oks = [
+        {"action": "default"},
+        {"action": "none"},
+        {"action": "page", "page": "solar"},
+        {"action": "page", "page": "camera", "camera": "camera.driveway"},
+        {"action": "toggle", "entity": "light.hall", "confirm": True},
+        {"action": "run", "entity": "scene.movie"},
+        {
+            "action": "perform",
+            "perform_action": "light.turn_on",
+            "target": {"entity_id": "light.hall"},
+            "data": {"brightness_pct": 30},
+        },
+    ]
+    chips = [{"type": "entity", "entity": f"sensor.s{i}", "ok": ok} for i, ok in enumerate(oks)]
+    out = model.validate({"chips": chips, "cameras": [], "tank": []})["chips"]
+    # "default" is the same as no "ok" at all.
+    assert "ok" not in out[0]
+    assert out[1]["ok"] == {"action": "none"}
+    assert out[5]["ok"] == {"action": "run", "entity": "scene.movie", "confirm": False}
+    assert out[6]["ok"]["data"] == {"brightness_pct": 30}
+
+    for bad in (
+        {"action": "page", "page": "nope"},
+        {"action": "page", "page": "camera"},
+        {"action": "run", "entity": "light.hall"},
+        {"action": "perform", "perform_action": "not a service"},
+        {"action": "explode"},
+    ):
+        with pytest.raises(vol.Invalid):
+            model.validate({"chips": [{"type": "entity", "entity": "sensor.x", "ok": bad}], "cameras": [], "tank": []})
+
+
+async def test_only_what_can_be_toggled_is_toggled(hass: HomeAssistant) -> None:
+    # A sensor chip set to "toggle" with nothing chosen does nothing, rather than call sensor.toggle.
+    assert model.resolve_ok(hass, {"type": "entity", "entity": "sensor.x", "ok": {"action": "toggle"}}) == {
+        "action": "none"
+    }
+    for bad in (
+        {"type": "entity", "entity": "sensor.x", "ok": {"action": "toggle"}},
+        {"type": "entity", "entity": "weather.home", "ok": {"action": "toggle", "entity": "sensor.y"}},
+        {"type": "tank", "ok": {"action": "toggle"}},
+    ):
+        with pytest.raises(vol.Invalid, match="toggle"):
+            model.validate({"chips": [bad], "cameras": [], "tank": []})
+    ok = model.validate(
+        {"chips": [{"type": "entity", "entity": "lock.front", "ok": {"action": "toggle"}}], "cameras": [], "tank": []}
+    )
+    assert ok["chips"][0]["ok"] == {"action": "toggle", "confirm": False}
+
+
+def test_a_half_set_action_says_what_is_missing() -> None:
+    """Not "value must be one of ['default', 'none']" for every mistake."""
+    for ok, missing in (
+        ({"action": "page"}, "page"),
+        ({"action": "page", "page": "camera"}, "camera"),
+        ({"action": "run"}, "entity"),
+        ({"action": "perform", "perform_action": "light"}, "perform_action"),
+    ):
+        with pytest.raises(vol.Invalid, match=missing):
+            model.validate({"chips": [{"type": "entity", "entity": "sensor.x", "ok": ok}], "cameras": [], "tank": []})
+
+
+def test_the_page_toggles_what_the_integration_toggles() -> None:
+    """chips.js keeps its own copy of TOGGLE_DOMAINS for the editor: it must not drift."""
+    import json
+    from pathlib import Path
+    import re
+
+    js = (Path(model.__file__).parent / "frontend" / "chips.js").read_text(encoding="utf-8")
+    found = re.search(r"export const TOGGLE_DOMAINS = (\[[^\]]*\]);", js)
+    assert found
+    assert json.loads(found.group(1)) == list(model.TOGGLE_DOMAINS)

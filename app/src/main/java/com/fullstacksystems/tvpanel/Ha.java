@@ -58,6 +58,12 @@ final class Ha {
     static final String WEATHER = "weather", SOLAR_PAGE = "solar", APEX = "apex", CAMERAS = "cameras";
     /** Not a page: OK on the chip toggles the cover (the garage door) through Home Assistant. */
     static final String TOGGLE = "toggle";
+    /** Not a page: OK on the chip is a press the integration carries out (POST /api/tv_panel/press). */
+    static final String PRESS = "press";
+    /** Not a page: OK does nothing on the TV, and only tells the integration, for its event. */
+    static final String EVENT_ONLY = "event";
+    /** A page for one camera full screen: "camera/camera.driveway". */
+    static final String CAMERA_PAGE = "camera/";
     /** Splits a chip's label and value into columns (the tank chip); the launcher draws each pair as one column. */
     static final String COLUMN = "\t";
 
@@ -88,6 +94,10 @@ final class Ha {
 
         Widget withLabel(String l) {
             return new Widget(key, l, value, icon, colour, page, sortGroup);
+        }
+
+        Widget withPage(String p) {
+            return new Widget(key, label, value, icon, colour, p, sortGroup);
         }
     }
 
@@ -127,7 +137,10 @@ final class Ha {
         for (int i = 0; i < out.size(); i++) {
             Widget w = out.get(i);
             String label = settings.labels.get(w.key);
-            if (label != null && !APEX.equals(w.key)) out.set(i, w.withLabel(label));
+            if (label != null && !APEX.equals(w.key)) w = w.withLabel(label);
+            Settings.Ok ok = settings.oks.get(w.key);
+            if (ok != null) w = w.withPage(pageOf(ok));
+            out.set(i, w);
         }
         // The integration's list is in the order the person chose; the labels have none, so sort those.
         if (!ordered) out.sort((a, b) -> {
@@ -250,6 +263,64 @@ final class Ha {
         // Trident probe opens the Apex page (ApexActivity).
         String page = solar ? SOLAR_PAGE : Apex.PAGE_TYPES.contains(str(e, "apex")) ? APEX : "";
         return new Widget(id, name, value, icon, solar ? AMBER : BLUE, page, "2" + str(e, "device"));
+    }
+
+    /** The page a chip's OK opens ("" for none), or {@link #PRESS}. */
+    static String pageOf(Settings.Ok ok) {
+        if (ok.isPress()) return PRESS;
+        if ("none".equals(ok.action)) return EVENT_ONLY;
+        if (!"page".equals(ok.action)) return "";
+        switch (ok.page) {
+            case "weather": return WEATHER;
+            case "solar": return SOLAR_PAGE;
+            case "tank": return APEX;
+            case "cameras": return CAMERAS;
+            case "camera": return ok.camera.startsWith("camera.") ? CAMERA_PAGE + ok.camera : "";
+            default: return "";
+        }
+    }
+
+    static String pressBody(String key) {
+        try {
+            return new JSONObject().put("key", key).toString();
+        } catch (JSONException e) {
+            throw new IllegalStateException(e);
+        }
+    }
+
+    /**
+     * A press only for the integration's event: the TV opened a page ({@code action} "page") or the chip does
+     * nothing ("none"). The integration carries out nothing for it, whatever the chip is set to there now.
+     */
+    static String pressBody(String key, String action) {
+        try {
+            return new JSONObject().put("key", key).put("event_only", true).put("action", action).toString();
+        } catch (JSONException e) {
+            throw new IllegalStateException(e);
+        }
+    }
+
+    /**
+     * The page a chip opens when the app has no chips yet (it was restarted while Home showed them): only what the
+     * key itself says. Anything else could be set to do anything, so it does nothing rather than guess.
+     */
+    static String guessPage(String key) {
+        if (key.startsWith("weather.")) return WEATHER;
+        if (key.equals(CAMERAS) || key.startsWith("camera.")) return CAMERAS;
+        if (key.equals(APEX) || key.startsWith("sensor.apex_")) return APEX;
+        if (key.startsWith("sensor.") && (key.contains("production") || key.contains("solar") || key.contains("pv"))) {
+            return SOLAR_PAGE;
+        }
+        return "";
+    }
+
+    /** What to show after a press: the integration's message, or "" when there's nothing to say (a page, nothing). */
+    static String pressMessage(String json) {
+        try {
+            return new JSONObject(json).optString("message", "");
+        } catch (JSONException e) {
+            return "Home Assistant's answer made no sense.";
+        }
     }
 
     /** "68° → 70°": where it is and where it's set; "71.5° → 68–74°" for a range; "66° · Off" when it's off. */

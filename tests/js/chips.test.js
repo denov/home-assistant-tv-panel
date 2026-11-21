@@ -42,8 +42,15 @@ const tests = {
   "the device name is dropped from the front, and long solar names read Solar"() {
     const solar = chips.preview(hass, { type: "entity", entity: "sensor.envoy_current_power_production" }, {});
     assert.strictEqual(solar.label, "Solar");
-    assert.strictEqual(solar.value, "1.234 kW");
+    // Rounded as the TV's Ha.reading() does: "1.234" is longer than it needs to be.
+    assert.strictEqual(solar.value, "1.23 kW");
     assert.strictEqual(chips.defaultName(hass, "sensor.apex_temp"), "Temp");
+  },
+  "readings are kept as written unless they're longer than they need to be"() {
+    for (const [raw, shown] of [["8.30", "8.30"], ["78.9", "78.9"], ["1.234", "1.23"], ["1344.0", "1344"], ["67", "67"],
+      ["0.5", "0.5"], ["123.45", "123"], ["-2.179", "-2.18"]]) {
+      assert.strictEqual(chips.reading(raw), shown, raw);
+    }
   },
   "weather reads its condition and temperature"() {
     assert.deepStrictEqual(chips.preview(hass, { type: "entity", entity: "weather.home" }, {}),
@@ -85,13 +92,87 @@ const tests = {
     assert.strictEqual(chips.parseSolar("{nope").ok, false);
     assert.strictEqual(chips.parseSolar('{"arrays": 3}').ok, false);
   },
+  "the widget row is on unless its switch says off"() {
+    const h = { states: { "switch.tv_row": { state: "off", attributes: {} }, "switch.tv2_row": { state: "on", attributes: {} } } };
+    assert.strictEqual(chips.rowOn(h, "switch.tv_row"), false);
+    assert.strictEqual(chips.rowOn(h, "switch.tv2_row"), true);
+    // No switch yet (the TV's entry is still setting up): the TV shows its row.
+    assert.strictEqual(chips.rowOn(h, null), true);
+    assert.strictEqual(chips.rowOn(h, "switch.gone"), true);
+  },
+  "what OK does by default, as the integration decides"() {
+    const d = (chip) => chips.resolveOk(hass, chip);
+    assert.deepStrictEqual(d({ type: "entity", entity: "weather.home" }), { action: "page", page: "weather" });
+    assert.deepStrictEqual(d({ type: "entity", entity: "sensor.envoy_current_power_production" }), { action: "page", page: "solar" });
+    assert.deepStrictEqual(d({ type: "cameras" }), { action: "page", page: "cameras" });
+    assert.deepStrictEqual(d({ type: "tank" }), { action: "page", page: "tank" });
+    assert.deepStrictEqual(d({ type: "entity", entity: "cover.garage_door" }),
+      { action: "toggle", entity: "cover.garage_door", confirm: true });
+    assert.deepStrictEqual(d({ type: "entity", entity: "climate.hall" }), { action: "none" });
+    assert.deepStrictEqual(d({ type: "entity", entity: "climate.hall", ok: { action: "toggle" } }),
+      { action: "toggle", entity: "climate.hall", confirm: false });
+    assert.deepStrictEqual(d({ type: "tank", ok: { action: "toggle" } }), { action: "none" });
+  },
+  "each chip says what OK does"() {
+    const say = (chip) => chips.describeOk(hass, chip);
+    assert.strictEqual(say({ type: "entity", entity: "weather.home" }), "OK opens the weather page");
+    assert.strictEqual(say({ type: "cameras" }), "OK opens the camera grid");
+    assert.strictEqual(say({ type: "tank" }), "OK opens the tank page");
+    // The chip's own entity goes by the chip's name on the TV ("Garage"), or its label.
+    assert.strictEqual(say({ type: "entity", entity: "cover.garage_door" }), "OK twice opens or closes Garage");
+    assert.strictEqual(say({ type: "entity", entity: "cover.garage_door", label: "Big door" }), "OK twice opens or closes Big door");
+    // Another entity goes by its own name.
+    assert.strictEqual(say({ type: "entity", entity: "weather.home", ok: { action: "toggle", entity: "cover.garage_door" } }),
+      "OK opens or closes Garage Door");
+    assert.strictEqual(say({ type: "entity", entity: "climate.hall" }), "OK does nothing");
+    assert.strictEqual(say({ type: "entity", entity: "sensor.x", ok: { action: "page", page: "camera", camera: "camera.front" } }),
+      "OK opens Camera - Front Door full screen");
+    hass.states["script.good_night"] = { entity_id: "script.good_night", state: "off", attributes: { friendly_name: "Good night" } };
+    assert.strictEqual(say({ type: "entity", entity: "sensor.x", ok: { action: "run", entity: "script.good_night", confirm: true } }),
+      "OK twice runs Good night");
+    assert.strictEqual(say({ type: "entity", entity: "sensor.x", ok: { action: "perform", perform_action: "light.turn_on" } }),
+      "OK performs light.turn_on");
+    assert.strictEqual(say({ type: "entity", entity: "climate.hall", ok: { action: "toggle" } }), "OK toggles Hallway Thermostat");
+    assert.strictEqual(say({ type: "entity", entity: "climate.hall", label: "Hall", ok: { action: "toggle" } }), "OK toggles Hall");
+  },
+  "choosing another kind of action keeps what matters from the one it replaces"() {
+    const garage = { type: "entity", entity: "cover.garage_door" };
+    // The garage's default asks twice: an explicit toggle must too, or one OK opens the door.
+    assert.deepStrictEqual(chips.switchOk(hass, garage, "toggle"), { action: "toggle", entity: "cover.garage_door", confirm: true });
+    assert.deepStrictEqual(chips.switchOk(hass, garage, "run"), { action: "run", confirm: true });
+    // A sensor can't be toggled: nothing is chosen for it, so the page asks.
+    assert.deepStrictEqual(chips.switchOk(hass, { type: "entity", entity: "sensor.hall_temperature" }, "toggle"), { action: "toggle" });
+    assert.deepStrictEqual(chips.switchOk(hass, garage, "none"), { action: "none" });
+    assert.deepStrictEqual(chips.resolveOk(hass, { type: "entity", entity: "sensor.hall_temperature", ok: { action: "toggle" } }),
+      { action: "none" });
+  },
+  "a half-set action says what's still to choose"() {
+    const say = (ok) => chips.describeOk(hass, { type: "entity", entity: "sensor.x", ok });
+    assert.strictEqual(say({ action: "page" }), "OK opens a page: choose which");
+    assert.strictEqual(say({ action: "page", page: "camera" }), "OK opens a camera: choose which");
+    assert.strictEqual(say({ action: "run" }), "OK runs a script or scene: choose which");
+    assert.strictEqual(say({ action: "perform" }), "OK performs an action: choose which");
+    assert.strictEqual(say({ action: "toggle" }), "OK does nothing: choose what to toggle");
+  },
+  "the Default choice reads as a sentence"() {
+    assert.strictEqual(chips.defaultChoice(hass, { type: "entity", entity: "cover.garage_door" }),
+      "Default: opens or closes Garage (press twice)");
+    assert.strictEqual(chips.defaultChoice(hass, { type: "entity", entity: "weather.home", ok: { action: "none" } }),
+      "Default: opens the weather page");
+  },
+  "toggles cover the integration's domains"() {
+    assert.deepStrictEqual(chips.TOGGLE_DOMAINS, ["automation", "climate", "cover", "fan", "humidifier", "input_boolean",
+      "light", "lock", "media_player", "remote", "siren", "switch", "valve"]);
+  },
   "saving sends only what the integration takes, with empty labels dropped"() {
     const out = chips.toSave({
-      chips: [{ type: "entity", entity: "climate.hall", label: "  " }, { type: "tank", label: "Reef" }],
+      chips: [{ type: "entity", entity: "climate.hall", label: "  ", ok: { action: "default" } },
+        { type: "tank", label: "Reef", ok: { action: "page", page: "solar" } }],
       cameras: ["camera.front"], tank: ["sensor.apex_ph"], solarText: "", saved: false,
     });
     assert.deepStrictEqual(out, {
-      chips: [{ type: "entity", entity: "climate.hall" }, { type: "tank", label: "Reef" }],
+      // "default" is the same as no ok at all; any other is kept.
+      chips: [{ type: "entity", entity: "climate.hall" }, { type: "tank", label: "Reef", ok: { action: "page", page: "solar" } }],
       cameras: ["camera.front"], tank: ["sensor.apex_ph"], solar: null,
     });
   },
