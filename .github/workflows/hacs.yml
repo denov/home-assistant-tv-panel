@@ -17,6 +17,8 @@ jobs:
         uses: "hacs/action@main"
         with:
           category: "integration"
+          # Unlisted for now: no description or topics. Drop this line before asking to join the HACS default list.
+          ignore: "description topics"
 
   hassfest:
     runs-on: "ubuntu-latest"
