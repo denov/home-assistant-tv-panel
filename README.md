@@ -175,6 +175,16 @@ TV_HOST=<tv ip> ./install.sh                       # install or update the app
 TV_HOST=<tv ip> ./install.sh path/to/config.json   # without the integration: {"url": "http://<ha ip>:8123", "token": "..."}
 ```
 
+To work on the integration and its page without a TV, use a throwaway Home Assistant, such as a local Docker one,
+and a config file with its URL and an admin's token (`{"url": "http://localhost:8123", "token": "..."}`):
+
+```bash
+ha/.venv/bin/python ha/dev_ha.py dev.json     # stand-in entities, a stand-in TV paired over the config flow, starter chips
+ha/.venv/bin/python ha/page_check.py dev.json --shot page.png   # the page in headless Chrome
+```
+
+Never point `dev_ha.py` at your real Home Assistant: it writes states and pairs a TV that doesn't exist.
+
 Pairing through the integration replaces the config file. If you use one anyway, keep it out of git; the app copies
 it into its own storage and deletes the copy on the TV.
 
