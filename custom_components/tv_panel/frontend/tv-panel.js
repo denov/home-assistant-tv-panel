@@ -311,7 +311,7 @@ class TvPanelSettings extends HTMLElement {
         ${opt("toggle", "Toggle something")}${opt("run", "Run a script or scene")}${opt("perform", "Perform an action")}
       </select></label>
       ${fields}${confirm}
-      <p class="hint">Every press also fires the <code>tv_panel_chip_pressed</code> event, with the chip and the TV, for automations.</p>
+      <p class="hint">Whatever you pick, an automation can react to the press too, through the <code>tv_panel_chip_pressed</code> event.</p>
     </div>`;
   }
 
