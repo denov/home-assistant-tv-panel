@@ -13,6 +13,7 @@ input_text.tv_camera_order. Both still read, as the new shape.
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from homeassistant.core import HomeAssistant
@@ -176,6 +177,17 @@ def is_garage(hass: HomeAssistant, entity_id: str) -> bool:
     ).lower()
 
 
+def asks_twice(hass: HomeAssistant, entity_id: str) -> bool:
+    """A cover that opens a way in (a garage door, a gate or a door) toggles on two presses by default. Blinds,
+    shades and windows don't; neither do locks. chips.js asksTwice() mirrors it."""
+    state = hass.states.get(entity_id)
+    dc = state.attributes.get("device_class") if state is not None else None
+    if dc in ("garage", "gate", "door") or is_garage(hass, entity_id):
+        return True
+    words = re.split(r"[^a-z]+", (entity_id + " " + _name(hass, entity_id)).lower())
+    return dc is None and "gate" in words
+
+
 def is_solar(hass: HomeAssistant, entity_id: str) -> bool:
     state = hass.states.get(entity_id)
     return (
@@ -186,8 +198,8 @@ def is_solar(hass: HomeAssistant, entity_id: str) -> bool:
 
 
 def default_ok(hass: HomeAssistant, chip: dict[str, Any]) -> dict[str, Any]:
-    """What OK did before it could be set: the chip's page, the garage door's toggle (pressed twice), or nothing.
-    chips.js defaultOk() mirrors it for the page."""
+    """What OK does unless it's set: the chip's page, a garage door's, gate's or door's toggle (pressed twice), or
+    nothing. chips.js defaultOk() mirrors it for the page."""
     if chip["type"] == "cameras":
         return {"action": "page", "page": "cameras"}
     if chip["type"] == "tank":
@@ -202,7 +214,7 @@ def default_ok(hass: HomeAssistant, chip: dict[str, Any]) -> dict[str, Any]:
         return {"action": "page", "page": "tank"}
     if domain == "sensor" and is_solar(hass, e):
         return {"action": "page", "page": "solar"}
-    if domain == "cover" and is_garage(hass, e):
+    if domain == "cover" and asks_twice(hass, e):
         return {"action": "toggle", "entity": e, "confirm": True}
     return {"action": "none"}
 

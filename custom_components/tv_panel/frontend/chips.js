@@ -168,10 +168,17 @@ export const canToggle = (id) => TOGGLE_DOMAINS.includes(String(id).split(".")[0
 
 const isGarage = (hass, id) => hass.states[id]?.attributes?.device_class === "garage"
   || (id + friendly(hass, id)).toLowerCase().includes("garage");
+/** A cover that opens a way in (a garage door, a gate or a door) toggles on two presses by default. model.py's
+ * asks_twice() decides the same. */
+const asksTwice = (hass, id) => {
+  const dc = hass.states[id]?.attributes?.device_class;
+  if (["garage", "gate", "door"].includes(dc) || isGarage(hass, id)) return true;
+  return !dc && `${id} ${friendly(hass, id)}`.toLowerCase().split(/[^a-z]+/).includes("gate");
+};
 const isSolar = (hass, id) => ["power", "energy"].includes(hass.states[id]?.attributes?.device_class)
   && /production|solar|pv/.test(id);
 
-/** What OK did before it could be set: the chip's page, the garage door's toggle (pressed twice), or nothing. */
+/** What OK does unless it's set: the chip's page, a garage door's, gate's or door's toggle (pressed twice), or nothing. */
 export function defaultOk(hass, chip) {
   if (chip.type === "cameras") return { action: "page", page: "cameras" };
   if (chip.type === "tank") return { action: "page", page: "tank" };
@@ -181,7 +188,7 @@ export function defaultOk(hass, chip) {
   if (domain === "camera") return { action: "page", page: "cameras" };
   if (hass.states[id] && isProbe(hass.states[id])) return { action: "page", page: "tank" };
   if (domain === "sensor" && isSolar(hass, id)) return { action: "page", page: "solar" };
-  if (domain === "cover" && isGarage(hass, id)) return { action: "toggle", entity: id, confirm: true };
+  if (domain === "cover" && asksTwice(hass, id)) return { action: "toggle", entity: id, confirm: true };
   return { action: "none" };
 }
 

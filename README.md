@@ -34,7 +34,8 @@ The pages work with any launcher. The **chip row** needs a launcher that reads T
    and choose type **Integration**.
 1. Download **TV Panel** in HACS.
 1. Restart Home Assistant.
-1. Install the app on the TV (see [Build](#build)) and open it. It shows a six-digit code and the TV's address.
+1. Install the app on the TV (see [The app on the TV](#the-app-on-the-tv)) and open it. It shows a six-digit code and
+   the TV's address.
 1. Set up the integration from the UI, type the address the TV shows, then enter the code. (The app also announces
    itself over mDNS while it's open, so Home Assistant may offer the TV under **Settings** → **Devices & services**;
    that doesn't work on every TV and network yet.)
@@ -47,6 +48,16 @@ The pages work with any launcher. The **chip row** needs a launcher that reads T
 2. Unzip it into `custom_components/tv_panel` in your Home Assistant configuration directory.
 3. Restart Home Assistant.
 4. Open the app on the TV and set up the integration using the UI, as above.
+
+### The app on the TV
+
+Download `tv-panel-<version>.apk` from the [latest release](https://github.com/denov/home-assistant-tv-panel/releases/latest)
+and install it, either over ADB (`adb install -r tv-panel-<version>.apk`) or on the TV with a downloader or file
+manager app that you've allowed to install unknown apps in the TV's settings. Use the same version as the
+integration. Or build it yourself (see [Build](#build)).
+
+The release APK and a self-built one are signed with different keys, and Android won't install one over the other.
+To switch, uninstall the app first and pair it again.
 
 ### Pairing
 
@@ -77,7 +88,7 @@ Door", "OK does nothing". **Change** sets it:
 
 | On OK | |
 |---|---|
-| **Default** | What TV Panel always did: weather, solar, the tank and the cameras open their pages, a garage door opens or closes when OK is pressed twice, anything else does nothing. |
+| **Default** | Weather, solar, the tank and the cameras open their pages. A garage door, gate or door (a cover) opens or closes when OK is pressed twice. Anything else, locks included, does nothing. |
 | **Do nothing** | The chip only shows its value. |
 | **Open a page** | Weather, solar, the tank, the camera grid, or one camera full screen. |
 | **Toggle something** | A light, switch, fan, cover, lock and so on: the chip's own entity or another. |
@@ -154,7 +165,8 @@ entity's `weather.get_forecasts`. Changes show up on the TV within about 15 seco
 ## Build
 
 JDK 17, Android SDK platform 34, build-tools 34. `install.sh` sideloads over ADB with `tools/tv.py` from a
-[TV Panel Launcher](https://github.com/denov/tv-panel-launcher) checkout next to this one (or a CleanYourTV one).
+[TV Panel Launcher](https://github.com/denov/tv-panel-launcher) checkout next to this one (or a CleanYourTV one). A
+build here is signed with your machine's debug key; only the release workflow has the release key.
 
 ```bash
 ./gradlew testReleaseUnitTest assembleRelease      # JVM tests and the APK

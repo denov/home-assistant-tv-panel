@@ -20,3 +20,43 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: gh release upload "${{ github.event.release.tag_name }}" tv_panel.zip --clobber
+
+  apk:
+    runs-on: "ubuntu-latest"
+    name: Attach the signed APK
+    steps:
+      - name: Check out the repository
+        uses: "actions/checkout@v4"
+
+      - name: The release names the app's version
+        env:
+          TAG: ${{ github.event.release.tag_name }}
+        run: |
+          app="$(sed -n "s/^ *versionName '\(.*\)'/\1/p" app/build.gradle)"
+          integration="$(python3 -c 'import json; print(json.load(open("custom_components/tv_panel/manifest.json"))["version"])')"
+          echo "tag $TAG, app $app, integration $integration"
+          [ "$TAG" = "v$app" ] && [ "$TAG" = "v$integration" ]
+
+      - name: Set up JDK 17
+        uses: "actions/setup-java@v4"
+        with:
+          distribution: "temurin"
+          java-version: "17"
+
+      - name: Build and sign
+        env:
+          KEYSTORE_B64: ${{ secrets.TVPANEL_KEYSTORE_B64 }}
+          TVPANEL_KEYSTORE_PASSWORD: ${{ secrets.TVPANEL_KEYSTORE_PASSWORD }}
+        run: |
+          [ -n "$KEYSTORE_B64" ] || { echo "The TVPANEL_KEYSTORE_B64 secret is missing."; exit 1; }
+          echo "$KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/release.p12"
+          TVPANEL_KEYSTORE="$RUNNER_TEMP/release.p12" ./gradlew --no-daemon testReleaseUnitTest assembleRelease
+          rm "$RUNNER_TEMP/release.p12"
+          "$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -n 1)"/apksigner verify --print-certs app/build/outputs/apk/release/app-release.apk \
+            | grep -q "CN=TV Panel" || { echo "The APK isn't signed with the release key."; exit 1; }
+          cp app/build/outputs/apk/release/app-release.apk "tv-panel-${{ github.event.release.tag_name }}.apk"
+
+      - name: Upload to release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "${{ github.event.release.tag_name }}" tv-panel-*.apk --clobber

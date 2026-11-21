@@ -113,6 +113,25 @@ const tests = {
       { action: "toggle", entity: "climate.hall", confirm: false });
     assert.deepStrictEqual(d({ type: "tank", ok: { action: "toggle" } }), { action: "none" });
   },
+  "gates and doors ask twice by default, like the garage; locks, blinds and windows don't"() {
+    const h = { ...hass, states: { ...hass.states } };
+    const add = (id, name, dc) => { h.states[id] = { entity_id: id, state: "closed",
+      attributes: { friendly_name: name, ...(dc ? { device_class: dc } : {}) } }; };
+    add("cover.front", "Front", "gate");
+    add("cover.side", "Side", "door");
+    add("cover.driveway_gate", "Driveway Gate");
+    add("cover.hall_window", "Hall window", "window");
+    add("cover.navigator", "Navigator shade", "shade");
+    add("lock.front_door", "Front Door");
+    const d = (entity) => chips.resolveOk(h, { type: "entity", entity });
+    for (const e of ["cover.front", "cover.side", "cover.driveway_gate"]) {
+      assert.deepStrictEqual(d(e), { action: "toggle", entity: e, confirm: true }, e);
+    }
+    for (const e of ["cover.hall_window", "cover.navigator", "lock.front_door"]) {
+      assert.deepStrictEqual(d(e), { action: "none" }, e);
+    }
+    assert.strictEqual(chips.defaultChoice(h, { type: "entity", entity: "cover.front" }), "Default: opens or closes Front (press twice)");
+  },
   "each chip says what OK does"() {
     const say = (chip) => chips.describeOk(hass, chip);
     assert.strictEqual(say({ type: "entity", entity: "weather.home" }), "OK opens the weather page");

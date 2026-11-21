@@ -138,6 +138,24 @@ async def test_default_ok_is_what_the_tv_did_before(hass: HomeAssistant) -> None
     assert ok({"type": "entity", "entity": "sensor.hall_temperature"}) == {"action": "none"}
 
 
+async def test_gates_and_doors_toggle_on_two_presses_by_default(hass: HomeAssistant) -> None:
+    """Like the garage: anything that opens a way in asks twice. Locks, blinds and windows do nothing by default."""
+    hass.states.async_set("cover.front", "closed", {"device_class": "gate", "friendly_name": "Front"})
+    hass.states.async_set("cover.side", "closed", {"device_class": "door", "friendly_name": "Side"})
+    hass.states.async_set("cover.driveway_gate", "closed", {"friendly_name": "Driveway Gate"})
+    hass.states.async_set("cover.hall_window", "closed", {"device_class": "window", "friendly_name": "Hall window"})
+    hass.states.async_set("cover.navigator", "closed", {"device_class": "shade", "friendly_name": "Navigator shade"})
+    hass.states.async_set("lock.front_door", "locked", {"friendly_name": "Front Door"})
+
+    def ok(entity):
+        return model.resolve_ok(hass, {"type": "entity", "entity": entity})
+
+    for e in ("cover.front", "cover.side", "cover.driveway_gate"):
+        assert ok(e) == {"action": "toggle", "entity": e, "confirm": True}, e
+    for e in ("cover.hall_window", "cover.navigator", "lock.front_door"):
+        assert ok(e) == {"action": "none"}, e
+
+
 async def test_an_ok_of_its_own_wins_and_fills_in(hass: HomeAssistant) -> None:
     # A toggle without an entity toggles the chip's own; confirm defaults to off.
     assert model.resolve_ok(hass, {"type": "entity", "entity": "light.hall", "ok": {"action": "toggle"}}) == {
