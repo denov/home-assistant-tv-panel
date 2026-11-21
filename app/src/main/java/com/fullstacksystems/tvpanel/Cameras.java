@@ -30,6 +30,7 @@ final class Cameras {
             + " | selectattr('attributes.device_class', 'defined') | selectattr('attributes.device_class', 'eq', 'motion')"
             + " | selectattr('state', 'eq', 'on') | list | count) if e.startswith('camera.') and device_id(e) else 0)";
 
+    /** Without the integration only (see {@link Ha#data}; its data.py builds the same answer). */
     static final String TEMPLATE = "{% set ns = namespace(out=[]) %}"
             + "{% for e in (entities if entities is defined else label_entities('" + Ha.LABEL + "'))"
             + " | select('match', 'camera[.]') %}"

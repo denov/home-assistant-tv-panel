@@ -1,6 +1,7 @@
 """The TV's notify entity: notify.send_message shows the message on the TV, over whatever is playing.
 
-The TV Panel app shows it as a toast. A TV in standby is left off and the message is dropped.
+The TV Panel app shows it as a toast and opens nothing, so playback goes on (see messages.py). A TV that isn't
+listening (off, or an older app) doesn't get it.
 """
 
 from __future__ import annotations
@@ -13,7 +14,7 @@ from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from . import TvPanelConfigEntry
 from .const import CONF_TV_ID, DOMAIN
-from .tv_link import async_open, notify_link
+from .messages import async_send
 
 
 async def async_setup_entry(
@@ -36,4 +37,4 @@ class TvNotify(NotifyEntity):
         self._attr_device_info = DeviceInfo(identifiers={(DOMAIN, tv_id)}, name=entry.data.get(CONF_NAME))
 
     async def async_send_message(self, message: str, title: str | None = None) -> None:
-        await async_open(self.hass, self._entry, notify_link(message, title))
+        async_send(self.hass, self._entry, message, title)

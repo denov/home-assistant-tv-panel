@@ -129,6 +129,9 @@ public class WidgetProvider extends ContentProvider {
     public Cursor query(Uri uri, String[] projection, String selection, String[] args, String sort) {
         MatrixCursor out = new MatrixCursor(COLUMNS);
         if (!mayRead(getCallingPackage())) return out;
+        // In case it was stopped and nothing has started it since. Android 12 may refuse while the launcher asks
+        // from the background; the next query tries again.
+        MessageService.start(getContext());
         long now = SystemClock.elapsedRealtime();
         if (fetchedAt < 0 || now - fetchedAt > FRESH_MS) refresh(uri);
         List<Ha.Widget> list = rows;
@@ -173,16 +176,15 @@ public class WidgetProvider extends ContentProvider {
     static List<Ha.Widget> fetch(Context ctx) {
         Config c = Config.load(ctx);
         if (!c.complete()) {
-            lastError = "No Home Assistant address and token yet.";
-            return Collections.emptyList();
+            lastError = "Not paired with Home Assistant yet.";
+            return Collections.singletonList(Ha.setupChip(false));
         }
         Settings settings = SettingsSource.get(c);
-        HaClient.Reply r = new HaClient(c.url, c.token).post("/api/template", Ha.templateBody(settings));
+        HaClient.Reply r = Ha.data(new HaClient(c.url, c.token), Ha.DATA_CHIPS, Ha.templateBody(settings));
         if (!r.ok()) {
-            lastError = r.code == 401 ? "Home Assistant refused the token (401)."
-                    : r.code == 0 ? "Home Assistant did not answer at " + c.url + "."
-                    : "Home Assistant answered " + r.code + ".";
-            return null;
+            lastError = r.code == 0 ? "Home Assistant did not answer at " + c.url + "." : Ha.why(r.code);
+            // Signed out: the token is no good any more (the integration was removed). The way back is pairing.
+            return r.code == 401 ? Collections.singletonList(Ha.setupChip(true)) : null;
         }
         try {
             List<Ha.Widget> list = Ha.parseWidgets(r.body, settings);

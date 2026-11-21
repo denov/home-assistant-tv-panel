@@ -1,9 +1,8 @@
-"""Open TV Panel's pages and show messages on the TV, through Home Assistant's Android TV Remote integration.
+"""Open TV Panel's pages on the TV, through Home Assistant's Android TV Remote integration.
 
-The TV Panel app takes tvpanel:// links: tvpanel://weather, tvpanel://cameras/camera.front_door,
-tvpanel://notify?message=...&title=... The Android TV Remote integration set up for the same TV (found by its
-address) sends them. A URL played on its media player opens the link without turning the TV on; remote.turn_on with
-the link as its activity turns the TV on first.
+The TV Panel app takes tvpanel:// links: tvpanel://weather, tvpanel://cameras/camera.front_door. The Android TV Remote
+integration set up for the same TV (found by its address) sends them. A URL played on its media player opens the
+link without turning the TV on; remote.turn_on with the link as its activity turns the TV on first.
 """
 
 from __future__ import annotations
@@ -11,7 +10,6 @@ from __future__ import annotations
 import asyncio
 from dataclasses import dataclass
 import logging
-from urllib.parse import quote, urlencode
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_HOST, STATE_OFF, STATE_UNAVAILABLE, STATE_UNKNOWN
@@ -44,13 +42,6 @@ def page_link(page: str, camera: str | None = None) -> str:
     if page == CAMERA:
         return f"tvpanel://cameras/{camera}"
     return f"tvpanel://{PAGES[page]}"
-
-
-def notify_link(message: str, title: str | None = None) -> str:
-    query = {"message": message}
-    if title:
-        query["title"] = title
-    return "tvpanel://notify?" + urlencode(query, quote_via=quote)
 
 
 def find_remote(hass: HomeAssistant, entry: ConfigEntry) -> Remote | None:

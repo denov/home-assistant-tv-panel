@@ -3,6 +3,7 @@
 from ipaddress import ip_address
 
 from homeassistant import config_entries
+from homeassistant.auth.const import GROUP_ID_USER
 from homeassistant.core import HomeAssistant
 from homeassistant.core_config import async_process_ha_core_config
 from homeassistant.data_entry_flow import FlowResultType
@@ -50,6 +51,24 @@ async def test_typed_in_and_paired(hass: HomeAssistant, aioclient_mock: AiohttpC
     assert users[0].id == result["data"][CONF_USER_ID]
     # The token the TV got works.
     assert hass.auth.async_validate_access_token(sent["token"]) is not None
+    # An app before 0.6.0 doesn't say it can do without admin: it renders its own templates, which needs admin.
+    assert users[0].is_admin
+
+
+async def test_an_app_that_needs_no_admin_gets_a_normal_user(
+    hass: HomeAssistant, aioclient_mock: AiohttpClientMocker
+) -> None:
+    await _setup(hass)
+    aioclient_mock.get(f"{TV}/info", json=INFO)
+    aioclient_mock.post(f"{TV}/pair", json={"id": "abc123", "name": "BRAVIA 4K VH2", "needs_admin": False})
+
+    result = await hass.config_entries.flow.async_init(DOMAIN, context={"source": config_entries.SOURCE_USER})
+    result = await hass.config_entries.flow.async_configure(result["flow_id"], {"host": "192.168.1.50"})
+    result = await hass.config_entries.flow.async_configure(result["flow_id"], {"code": "482913"})
+
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    users = await _tv_users(hass)
+    assert [(u.is_admin, [g.id for g in u.groups], u.local_only) for u in users] == [(False, [GROUP_ID_USER], True)]
 
 
 async def test_wrong_code_leaves_no_user(hass: HomeAssistant, aioclient_mock: AiohttpClientMocker) -> None:

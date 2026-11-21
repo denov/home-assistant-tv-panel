@@ -17,11 +17,14 @@ import java.util.TreeSet;
  * The solar page's data: an Enphase Envoy in Home Assistant (the enphase_envoy integration), plus battery charge and
  * discharge sensors found by name. Pure Java (no Android types) so the JVM tests cover it.
  *
- * Live values come from one /api/template call. Totals come from the recorder's statistics over the websocket, because
+ * Live values come from the integration (/api/tv_panel/data/solar), or this template without it. Totals come from the recorder's statistics over the websocket, because
  * the Envoy's own "today" sensors are unreliable (on some firmware they report the lifetime total).
  */
 final class Solar {
-    /** Every Envoy sensor, grid status and storage mode, and battery charge/discharge power and energy sensors. */
+    /**
+     * Every Envoy sensor, grid status and storage mode, and battery charge/discharge power and energy sensors. Without
+     * the integration only (see {@link Ha#data}; its data.py builds the same answer).
+     */
     static final String TEMPLATE = "{% set ns = namespace(out=[]) %}"
             + "{% set ids = integration_entities('enphase_envoy') + (states.sensor"
             + " | selectattr('entity_id', 'search', '(batter|encharge).*_(charge|discharge)_(energy|power)$')"

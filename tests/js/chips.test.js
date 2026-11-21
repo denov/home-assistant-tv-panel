@@ -123,8 +123,11 @@ const tests = {
     add("cover.hall_window", "Hall window", "window");
     add("cover.navigator", "Navigator shade", "shade");
     add("lock.front_door", "Front Door");
+    // An empty device class counts as none (a template cover), as in model.py.
+    h.states["cover.side_gate"] = { entity_id: "cover.side_gate", state: "closed",
+      attributes: { friendly_name: "Side Gate", device_class: "" } };
     const d = (entity) => chips.resolveOk(h, { type: "entity", entity });
-    for (const e of ["cover.front", "cover.side", "cover.driveway_gate"]) {
+    for (const e of ["cover.front", "cover.side", "cover.driveway_gate", "cover.side_gate"]) {
       assert.deepStrictEqual(d(e), { action: "toggle", entity: e, confirm: true }, e);
     }
     for (const e of ["cover.hall_window", "cover.navigator", "lock.front_door"]) {
@@ -141,6 +144,42 @@ const tests = {
     assert.strictEqual(chips.stateText(hass, "climate.den"), "Heat cool");
     // Numbers keep the TV's formatting and unit.
     assert.strictEqual(chips.stateText(h, "sensor.hall_temperature"), "68.4 °F");
+  },
+  "the preview shows a chip as the TV draws it, not in Home Assistant's words"() {
+    const h = {
+      ...hass,
+      states: {
+        ...hass.states,
+        "binary_sensor.hall_motion": { entity_id: "binary_sensor.hall_motion", state: "on",
+          attributes: { friendly_name: "Hall Motion", device_class: "motion" } },
+        "select.storage_mode": { entity_id: "select.storage_mode", state: "self_consumption",
+          attributes: { friendly_name: "Storage" } },
+      },
+      formatEntityState: (st) => ({ on: "Detected", self_consumption: "Self-consumption" })[st.state] || st.state,
+    };
+    // The TV can't translate: it says "On", so the preview does too. The page's lists may say "Detected".
+    assert.strictEqual(chips.preview(h, { type: "entity", entity: "binary_sensor.hall_motion" }).value, "On");
+    assert.strictEqual(chips.stateText(h, "binary_sensor.hall_motion"), "Detected");
+    assert.strictEqual(chips.preview(h, { type: "entity", entity: "select.storage_mode" }).value, "Self consumption");
+    assert.strictEqual(chips.preview(h, { type: "entity", entity: "sensor.hall_temperature" }).value, "68.4 °F");
+  },
+  "a weather with no reading previews as the TV draws it: a grey cloud"() {
+    const h = { ...hass, states: { ...hass.states, "weather.nws": { entity_id: "weather.nws", state: "unknown",
+      attributes: { friendly_name: "NWS" } } } };
+    const p = chips.preview(h, { type: "entity", entity: "weather.nws" });
+    assert.deepStrictEqual([p.icon, p.tone, p.label, p.value], ["mdi:weather-cloudy", "off", "NWS", "—"]);
+  },
+  "searching formats only the rows it shows"() {
+    const states = {};
+    for (let i = 0; i < 500; i++) {
+      states[`sensor.s${i}`] = { entity_id: `sensor.s${i}`, state: "x", attributes: { friendly_name: `Sensor ${i}` } };
+    }
+    let formatted = 0;
+    const h = { ...hass, states, formatEntityState: (st) => { formatted++; return st.state; } };
+    assert.strictEqual(chips.search(h, "sensor 499", []).length, 1);
+    assert.ok(formatted <= 1, `formatted ${formatted} states`);
+    chips.search(h, "", []);
+    assert.ok(formatted <= 41, `formatted ${formatted} states`);
   },
   "each chip says what OK does"() {
     const say = (chip) => chips.describeOk(hass, chip);

@@ -88,22 +88,28 @@ public class WeatherActivity extends Activity {
         main.postDelayed(tick, REFRESH_MS);
         Config c = Config.load(this);
         if (!c.complete()) {
-            message("No Home Assistant address and token yet. Run install.sh with a config file.");
+            message(Ha.NOT_PAIRED);
             return;
         }
         io.execute(() -> {
             HaClient ha = new HaClient(c.url, c.token);
             try {
                 String id = entity;
-                if (id == null || !id.startsWith("weather.")) id = firstWeather(ha, c);
+                if (id == null || !id.startsWith("weather.")) {
+                    HaClient.Reply all = ha.get("/api/states");
+                    if (!all.ok()) {
+                        post(() -> message(Ha.why(all.code)));
+                        return;
+                    }
+                    id = firstWeather(c, new JSONArray(all.body));
+                }
                 if (id == null) {
                     post(() -> message("Home Assistant has no weather entity."));
                     return;
                 }
                 HaClient.Reply s = ha.get("/api/states/" + id);
                 if (!s.ok()) {
-                    String why = s.code == 0 ? "Home Assistant did not answer." : "Home Assistant answered " + s.code + ".";
-                    post(() -> message(why));
+                    post(() -> message(Ha.why(s.code)));
                     return;
                 }
                 Weather.Now now = Weather.now(s.body);
@@ -133,15 +139,13 @@ public class WeatherActivity extends Activity {
     }
 
     /** The page was opened without a chip (tv_panel.show, voice): see {@link Ha#pickWeather}. */
-    private static String firstWeather(HaClient ha, Config c) throws Exception {
+    private static String firstWeather(Config c, JSONArray states) {
         List<String> chips = new ArrayList<>();
         for (Ha.Widget w : WidgetProvider.current()) chips.add(w.key);
         // Straight after the app starts, before Home has asked for the chips, the saved settings know them.
         Settings s = SettingsSource.get(c);
         if (s.entities != null) chips.addAll(s.entities);
-        HaClient.Reply r = ha.get("/api/states");
-        if (!r.ok()) return Ha.pickWeather(chips, new JSONArray());
-        return Ha.pickWeather(chips, new JSONArray(r.body));
+        return Ha.pickWeather(chips, states);
     }
 
     private void post(Runnable r) {

@@ -127,14 +127,14 @@ public class SolarActivity extends Activity {
         main.postDelayed(liveTick, LIVE_MS);
         Config c = Config.load(this);
         if (!c.complete()) {
-            showMessage("Not paired with Home Assistant yet. Open TV Panel from the app grid to pair.");
+            showMessage(Ha.NOT_PAIRED);
             return;
         }
         io.execute(() -> {
             HaClient ha = new HaClient(c.url, c.token);
             if (zone == null) zone = haZone(ha);
             if (layout == null) layout = SettingsSource.get(c).solarLayout(Config.solarLayout(this));
-            HaClient.Reply r = ha.post("/api/template", Solar.templateBody());
+            HaClient.Reply r = Ha.data(ha, Ha.DATA_SOLAR, Solar.templateBody());
             if (!r.ok()) {
                 String why = r.code == 401 ? "Home Assistant refused the token (401)."
                         : r.code == 0 ? "Home Assistant did not answer." : "Home Assistant answered " + r.code + ".";

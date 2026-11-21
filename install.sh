@@ -15,12 +15,23 @@ fi
 : "${TV_HOST:?set TV_HOST to the TV IP address}"
 cd "$(dirname "$0")"
 TOOLS=""
-for d in ${TV_TOOLS:-} ../tv-panel-launcher/tools "${CLEANYOURTV:-../cleanyourtv}/tools"; do
-  if [ -f "$d/tv.py" ]; then TOOLS="$(cd "$d" && pwd)"; break; fi
-done
+if [ -n "${TV_TOOLS:-}" ]; then
+  # Chosen: that one or nothing, since another folder can hold another ADB key.
+  [ -f "$TV_TOOLS/tv.py" ] || { echo "TV_TOOLS=$TV_TOOLS has no tv.py" >&2; exit 1; }
+  TOOLS="$(cd "$TV_TOOLS" && pwd)"
+else
+  for d in ../tv-panel-launcher/tools "${CLEANYOURTV:-../cleanyourtv}/tools"; do
+    if [ -f "$d/tv.py" ]; then TOOLS="$(cd "$d" && pwd)"; break; fi
+  done
+fi
 [ -n "$TOOLS" ] || { echo "No tools/tv.py: clone github.com/denov/tv-panel-launcher next to this repo, or set TV_TOOLS." >&2; exit 1; }
 PY=$TOOLS/venv/bin/python
 [ -x "$PY" ] || PY=$TOOLS/venv/Scripts/python.exe
+[ -x "$PY" ] || {
+  echo "No Python venv in $TOOLS. Make it once:" >&2
+  echo "  python3 -m venv \"$TOOLS/venv\" && \"$TOOLS/venv/bin/pip\" install -r \"$TOOLS/requirements.txt\"" >&2
+  exit 1
+}
 export MSYS_NO_PATHCONV=1
 PKG=com.fullstacksystems.tvpanel
 tv() { "$PY" -I "$TOOLS/tv.py" "$@"; }

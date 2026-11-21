@@ -19,7 +19,7 @@
   "iot_class": "local_push",
   "issue_tracker": "https://github.com/denov/home-assistant-tv-panel/issues",
   "requirements": [],
-  "version": "0.5.0",
+  "version": "0.6.0",
   "zeroconf": [
     "_tvpanel._tcp.local."
   ]

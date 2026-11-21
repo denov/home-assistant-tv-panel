@@ -6,8 +6,10 @@ import org.json.JSONObject;
 
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Set;
 
 /**
  * What Home Assistant tells the TV, and how it reads on Home. Pure Java (no Android types) so the JVM tests cover it.
@@ -21,7 +23,10 @@ final class Ha {
     /** At most this many chips; the row is one line under the clock. */
     static final int MAX_WIDGETS = 8;
 
-    /** One request returns the switch and every labelled entity with what the chip needs. */
+    /**
+     * Without the integration only (see {@link #data}; its data.py builds the same answer): one request returns the
+     * switch and every labelled entity with what the chip needs.
+     */
     static final String TEMPLATE = "{% set ns = namespace(out=[]) %}"
             // The integration's list (in its order) when it sends one, else the tv_widget label.
             + "{% for e in (entities if entities is defined else label_entities('" + LABEL + "')) %}"
@@ -62,6 +67,14 @@ final class Ha {
     static final String PRESS = "press";
     /** Not a page: OK does nothing on the TV, and only tells the integration, for its event. */
     static final String EVENT_ONLY = "event";
+    /**
+     * Not paired (or signed out): the row is one chip, and OK on it opens TV Panel's own page with the pairing code.
+     * So the launcher can leave TV Panel's tile off Home without hiding the way to pair.
+     */
+    static final String SETUP = "setup";
+    /** What a page says when the TV isn't paired yet. */
+    static final String NOT_PAIRED = "Not paired with Home Assistant yet. Add the TV Panel integration in Home Assistant"
+            + " and enter the code that TV Panel's own page shows (OK on the TV Panel chip on Home opens it).";
     /** A page for one camera full screen: "camera/camera.driveway". */
     static final String CAMERA_PAGE = "camera/";
     /** Splits a chip's label and value into columns (the tank chip); the launcher draws each pair as one column. */
@@ -99,6 +112,31 @@ final class Ha {
         Widget withPage(String p) {
             return new Widget(key, label, value, icon, colour, p, sortGroup);
         }
+    }
+
+    /** The chip an unpaired TV shows ({@link #SETUP}); {@code signedOut}: Home Assistant refused the token. */
+    static Widget setupChip(boolean signedOut) {
+        return new Widget(SETUP, "TV Panel", signedOut ? "Pair again" : "Pair with Home Assistant", "home_outline",
+                BLUE, SETUP, "0");
+    }
+
+    /** What /api/tv_panel/data/<name> serves: the chip row, and the camera, tank and solar screens' live values. */
+    static final String DATA_CHIPS = "chips", DATA_CAMERAS = "cameras", DATA_TANK = "tank", DATA_SOLAR = "solar";
+
+    /**
+     * What the TV draws, from the integration, which works it out so the TV's user needn't be an admin. Without the
+     * integration (404: a pushed token rather than a paired TV, or an integration before 0.6.0) the app renders its own
+     * template, which needs an admin's token. Any other answer stands: the template would fail the same way.
+     */
+    static HaClient.Reply data(HaClient ha, String name, String templateBody) {
+        HaClient.Reply r = ha.get("/api/tv_panel/data/" + name);
+        return r.code == 404 ? ha.post("/api/template", templateBody) : r;
+    }
+
+    /** Why Home Assistant couldn't be read, from HaClient's code (0: no answer at all). */
+    static String why(int code) {
+        return code == 0 ? "Home Assistant did not answer."
+                : code == 401 ? "Home Assistant refused the token (401)." : "Home Assistant answered " + code + ".";
     }
 
     static String templateBody() {
@@ -252,7 +290,7 @@ final class Ha {
                     locked || missing ? BLUE : ORANGE, "", "1" + str(e, "device"));
         }
         String unit = str(e, "unit");
-        String value = missing ? "—" : (isNumber(state) ? reading(state) : capitalise(state));
+        String value = missing ? "—" : (isNumber(state) ? reading(state) : capitalise(state.replace('_', ' ')));
         if (!missing && !unit.isEmpty()) value = value + " " + unit;
         boolean solar = ("power".equals(dc) || "energy".equals(dc))
                 && (id.contains("production") || id.contains("solar") || id.contains("pv"));
@@ -305,6 +343,7 @@ final class Ha {
      * key itself says. Anything else could be set to do anything, so it does nothing rather than guess.
      */
     static String guessPage(String key) {
+        if (key.equals(SETUP)) return SETUP;
         if (key.startsWith("weather.")) return WEATHER;
         if (key.equals(CAMERAS) || key.startsWith("camera.")) return CAMERAS;
         if (key.equals(APEX) || key.startsWith("sensor.apex_")) return APEX;
@@ -314,14 +353,19 @@ final class Ha {
         return "";
     }
 
-    /** What to show after a press: the integration's message, or "" when there's nothing to say (a page, nothing). */
     /**
-     * The weather entity a page opened without a chip shows (tv_panel.show, voice): the TV's first weather chip, else
-     * the weather entity that's reporting and has a daily forecast, else one that's reporting, else any that isn't
-     * unavailable. The first in Home Assistant's list wins a tie. Null when there's none.
+     * The weather entity a page opened without a chip shows (tv_panel.show, voice): the TV's first weather chip that
+     * Home Assistant has and isn't unavailable, else the weather entity that's reporting and has a daily forecast, else
+     * one that's reporting, else any that isn't unavailable. The first in Home Assistant's list wins a tie. Null when
+     * there's none.
      */
     static String pickWeather(List<String> chips, JSONArray states) {
-        if (chips != null) for (String k : chips) if (k != null && k.startsWith("weather.")) return k;
+        Set<String> usable = new HashSet<>();
+        for (int i = 0; i < states.length(); i++) {
+            JSONObject o = states.optJSONObject(i);
+            if (o != null && !"unavailable".equals(o.optString("state"))) usable.add(o.optString("entity_id"));
+        }
+        if (chips != null) for (String k : chips) if (k != null && k.startsWith("weather.") && usable.contains(k)) return k;
         String best = null;
         int bestScore = -1;
         for (int i = 0; i < states.length(); i++) {
@@ -340,8 +384,7 @@ final class Ha {
         return best;
     }
 
-    /** tvpanel://notify?message=...&title=...: a message from Home Assistant's notify entity, shown as a toast. */
-    static final String NOTIFY = "notify";
+    /** A message from Home Assistant's notify entity ({@link Messages}), shown as a toast: at most this long. */
     static final int NOTIFY_MAX = 200;
 
     /** "Garage: Left open", like the press toasts ("Garage Door: opening"); cut to {@link #NOTIFY_MAX}. */
@@ -349,9 +392,14 @@ final class Ha {
         String t = title == null ? "" : title.trim();
         String m = message == null ? "" : message.trim();
         String text = t.isEmpty() ? m : m.isEmpty() ? t : t + ": " + m;
-        return text.length() <= NOTIFY_MAX ? text : text.substring(0, NOTIFY_MAX - 1) + "…";
+        if (text.length() <= NOTIFY_MAX) return text;
+        // Never half an emoji (a surrogate pair).
+        int cut = NOTIFY_MAX - 1;
+        if (Character.isHighSurrogate(text.charAt(cut - 1))) cut--;
+        return text.substring(0, cut) + "…";
     }
 
+    /** What to show after a press: the integration's message, or "" when there's nothing to say (a page, nothing). */
     static String pressMessage(String json) {
         try {
             return new JSONObject(json).optString("message", "");
@@ -401,7 +449,13 @@ final class Ha {
         }
     }
 
+    /** A weather entity without a reading now: "unknown" (NWS between updates), "unavailable", or none. */
+    static boolean noCondition(String c) {
+        return c == null || c.isEmpty() || "unknown".equals(c) || "unavailable".equals(c);
+    }
+
     static String conditionText(String c) {
+        if (noCondition(c)) return "No reading";
         switch (c) {
             case "clear-night": return "Clear";
             case "cloudy": return "Cloudy";
@@ -422,6 +476,7 @@ final class Ha {
     }
 
     static String conditionIcon(String c) {
+        if (noCondition(c)) return "weather_cloudy";
         switch (c) {
             case "clear-night": return "weather_night";
             case "cloudy": return "weather_cloudy";
@@ -442,6 +497,7 @@ final class Ha {
     }
 
     static int conditionColour(String c) {
+        if (noCondition(c)) return GREY;
         return "sunny".equals(c) || "exceptional".equals(c) ? AMBER : SKY;
     }
 

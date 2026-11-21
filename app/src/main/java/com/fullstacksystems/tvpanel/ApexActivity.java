@@ -98,13 +98,13 @@ public class ApexActivity extends Activity {
         main.postDelayed(liveTick, LIVE_MS);
         Config c = Config.load(this);
         if (!c.complete()) {
-            showMessage("No Home Assistant address and token yet. Run install.sh with a config file.");
+            showMessage(Ha.NOT_PAIRED);
             return;
         }
         io.execute(() -> {
             HaClient ha = new HaClient(c.url, c.token);
             if (zone == null) zone = haZone(ha);
-            HaClient.Reply r = ha.post("/api/template", Apex.templateBody());
+            HaClient.Reply r = Ha.data(ha, Ha.DATA_TANK, Apex.templateBody());
             if (!r.ok()) {
                 String why = r.code == 401 ? "Home Assistant refused the token (401)."
                         : r.code == 0 ? "Home Assistant did not answer." : "Home Assistant answered " + r.code + ".";

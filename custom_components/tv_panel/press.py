@@ -20,7 +20,7 @@ from homeassistant.helpers import config_validation as cv
 import voluptuous as vol
 
 from . import model
-from .const import CONF_USER_ID, DOMAIN
+from .view import NOT_A_TV, tv_entry
 
 EVENT = "tv_panel_chip_pressed"
 
@@ -116,11 +116,9 @@ class TvPanelPressView(HomeAssistantView):
         # The TV opened a page itself, or the chip does nothing: it only reports the press, for automations. What
         # the chip is set to here is not done, since the TV may not have caught up with a change to it yet.
         event_only = body.get("event_only") is True
-        entry = next(
-            (e for e in hass.config_entries.async_loaded_entries(DOMAIN) if e.data.get(CONF_USER_ID) == user.id), None
-        )
+        entry = tv_entry(hass, user)
         if entry is None:
-            return self.json_message("Not a TV Panel TV", HTTPStatus.NOT_FOUND)
+            return self.json_message(NOT_A_TV, HTTPStatus.NOT_FOUND)
         chip = next((c for c in model.settings(hass, entry.options)["chips"] if model.chip_key(c) == key), None)
         if chip is None:
             return self.json_message("No such chip", HTTPStatus.NOT_FOUND)

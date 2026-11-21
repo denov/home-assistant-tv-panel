@@ -185,7 +185,7 @@ def asks_twice(hass: HomeAssistant, entity_id: str) -> bool:
     if dc in ("garage", "gate", "door") or is_garage(hass, entity_id):
         return True
     words = re.split(r"[^a-z]+", (entity_id + " " + _name(hass, entity_id)).lower())
-    return dc is None and "gate" in words
+    return not dc and "gate" in words
 
 
 def is_solar(hass: HomeAssistant, entity_id: str) -> bool:

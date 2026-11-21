@@ -146,11 +146,13 @@ async def test_gates_and_doors_toggle_on_two_presses_by_default(hass: HomeAssist
     hass.states.async_set("cover.hall_window", "closed", {"device_class": "window", "friendly_name": "Hall window"})
     hass.states.async_set("cover.navigator", "closed", {"device_class": "shade", "friendly_name": "Navigator shade"})
     hass.states.async_set("lock.front_door", "locked", {"friendly_name": "Front Door"})
+    # An empty device class counts as none (a template cover), as in chips.js.
+    hass.states.async_set("cover.side_gate", "closed", {"device_class": "", "friendly_name": "Side Gate"})
 
     def ok(entity):
         return model.resolve_ok(hass, {"type": "entity", "entity": entity})
 
-    for e in ("cover.front", "cover.side", "cover.driveway_gate"):
+    for e in ("cover.front", "cover.side", "cover.driveway_gate", "cover.side_gate"):
         assert ok(e) == {"action": "toggle", "entity": e, "confirm": True}, e
     for e in ("cover.hall_window", "cover.navigator", "lock.front_door"):
         assert ok(e) == {"action": "none"}, e

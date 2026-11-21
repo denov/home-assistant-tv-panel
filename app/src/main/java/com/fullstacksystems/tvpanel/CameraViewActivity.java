@@ -175,7 +175,8 @@ public class CameraViewActivity extends Activity implements SurfaceHolder.Callba
         Config c = Config.load(this);
         if (!c.complete()) return;
         io.execute(() -> {
-            HaClient.Reply r = new HaClient(c.url, c.token).post("/api/template", Cameras.templateBody(SettingsSource.get(c)));
+            HaClient.Reply r = Ha.data(new HaClient(c.url, c.token), Ha.DATA_CAMERAS,
+                    Cameras.templateBody(SettingsSource.get(c)));
             if (!r.ok()) return;
             try {
                 List<Cameras.Cam> got = Cameras.parse(r.body);
@@ -207,7 +208,7 @@ public class CameraViewActivity extends Activity implements SurfaceHolder.Callba
         String id = current;
         Config c = Config.load(this);
         if (!c.complete()) {
-            note.setText("No Home Assistant address and token yet.");
+            note.setText(Ha.NOT_PAIRED);
             return;
         }
         Thread t = new Thread(() -> stream(g, id, new HaClient(c.url, c.token)), "camera-stream");

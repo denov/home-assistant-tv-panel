@@ -184,8 +184,16 @@ final class PairServer {
         }
         Config.save(ctx, url, token);
         newCode();
-        reply(c, 200, new JSONObject().put("id", id(ctx)).put("name", name()).put("url", url).toString());
+        reply(c, 200, answer(id(ctx), name(), url).toString());
         listener.onPaired(url);
+    }
+
+    /**
+     * The TV's answer to a right code. "needs_admin": false tells the integration (0.6.0 on) that the TV's user can be
+     * a normal one: the app reads what it draws from /api/tv_panel/data, not its own templates.
+     */
+    static JSONObject answer(String id, String name, String url) throws org.json.JSONException {
+        return new JSONObject().put("id", id).put("name", name).put("url", url).put("needs_admin", false);
     }
 
     /**

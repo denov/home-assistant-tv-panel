@@ -125,4 +125,47 @@ public class HaTest {
         assertEquals(Ha.APEX, w.get(2).key);
         assertEquals("weather.home", w.get(3).key);
     }
+
+    @Test
+    public void aStateInWordsReadsAsWords() throws Exception {
+        // "self_consumption" on a chip reads "Self consumption", as the settings page's preview shows it.
+        String reply = "{\"on\": \"on\", \"ordered\": true, \"items\": ["
+                + "{\"id\": \"select.storage_mode\", \"name\": \"Storage\", \"state\": \"self_consumption\"}]}";
+        assertEquals("Self consumption", Ha.parseWidgets(reply).get(0).value);
+    }
+
+    @Test
+    public void whyHomeAssistantCouldntBeRead() {
+        assertEquals("Home Assistant did not answer.", Ha.why(0));
+        assertEquals("Home Assistant refused the token (401).", Ha.why(401));
+        assertEquals("Home Assistant answered 500.", Ha.why(500));
+    }
+
+    @Test
+    public void aWeatherWithNoReadingSaysSoInGrey() {
+        // NWS between updates reads "unknown": not a sun and "Unknown".
+        for (String c : new String[]{"unknown", "unavailable", ""}) {
+            assertEquals("No reading", Ha.conditionText(c));
+            assertEquals("weather_cloudy", Ha.conditionIcon(c));
+            assertEquals(Ha.GREY, Ha.conditionColour(c));
+        }
+        assertEquals("weather_sunny", Ha.conditionIcon("sunny"));
+        assertEquals(Ha.AMBER, Ha.conditionColour("sunny"));
+    }
+
+    @Test
+    public void unpairedTheRowIsOneChipThatOpensPairing() {
+        // So TV Panel's own tile can be hidden: OK on this chip opens the page with the pairing code.
+        Ha.Widget w = Ha.setupChip(false);
+        assertEquals(Ha.SETUP, w.key);
+        assertEquals("TV Panel", w.label);
+        assertEquals("Pair with Home Assistant", w.value);
+        assertTrue(w.open);
+        assertEquals(Ha.SETUP, w.page);
+        // Signed out (the integration was removed, or the token revoked): pair again.
+        assertEquals("Pair again", Ha.setupChip(true).value);
+        // After a restart, before any rows, OK on it still opens pairing.
+        assertEquals(Ha.SETUP, Ha.guessPage(Ha.SETUP));
+    }
 }
+

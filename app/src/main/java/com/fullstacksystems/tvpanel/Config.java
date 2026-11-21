@@ -30,7 +30,7 @@ final class Config {
         return !url.isEmpty() && !token.isEmpty();
     }
 
-    private static SharedPreferences prefs(Context c) {
+    static SharedPreferences prefs(Context c) {
         return c.getSharedPreferences("server", Context.MODE_PRIVATE);
     }
 
@@ -60,11 +60,23 @@ final class Config {
         return u;
     }
 
-    /** Takes a pushed config.json ({"url": ..., "token": ...}) if there is one, and deletes it. */
+    /** A pushed file that doesn't read this soon after it changed may still be being written. */
+    static final long WRITE_GRACE_MS = 10_000;
+
+    static boolean mayBeWriting(long modifiedMs, long nowMs) {
+        return nowMs - modifiedMs <= WRITE_GRACE_MS;
+    }
+
+    /**
+     * Takes a pushed config.json ({"url": ..., "token": ...}) if there is one, and deletes it. One that doesn't read is
+     * kept while it may still be being written: the status page can look before install.sh's write is done, and the
+     * import that runs when the write closes (ConfigProvider) then finds it.
+     */
     static boolean importPushed(Context c) {
         File dir = c.getExternalFilesDir(null);
         File f = dir == null ? null : new File(dir, PUSHED);
         if (f == null || !f.isFile()) return false;
+        boolean done = true;
         try {
             JSONObject o = new JSONObject(new String(Files.readAllBytes(f.toPath()), StandardCharsets.UTF_8));
             SharedPreferences.Editor e = prefs(c).edit();
@@ -73,12 +85,14 @@ final class Config {
             if (o.has("solar")) e.putString("solar", o.optJSONObject("solar") == null ? "" : o.optJSONObject("solar").toString());
             e.apply();
             WidgetProvider.invalidate();
+            SettingsSource.invalidate();
             return true;
         } catch (Exception e) {
+            done = !mayBeWriting(f.lastModified(), System.currentTimeMillis());
             return false;
         } finally {
             //noinspection ResultOfMethodCallIgnored
-            f.delete();
+            if (done) f.delete();
         }
     }
 }

@@ -49,4 +49,13 @@ public class WeatherPickTest {
         assertEquals("weather.nws", Ha.pickWeather(null, new JSONArray(
                 "[{\"entity_id\": \"weather.nws\", \"state\": \"unknown\", \"attributes\": {\"supported_features\": 6}}]")));
     }
+
+    @Test
+    public void aChipForAWeatherThatsGoneOrUnavailableDoesntWin() throws Exception {
+        // The settings can still name a weather entity that was removed, or one that's unavailable.
+        assertEquals("weather.forecast_home", Ha.pickWeather(Collections.singletonList("weather.old"), states()));
+        assertEquals("weather.forecast_home", Ha.pickWeather(Collections.singletonList("weather.gone"), states()));
+        assertEquals("weather.station",
+                Ha.pickWeather(Arrays.asList("weather.old", "weather.station"), states()));
+    }
 }

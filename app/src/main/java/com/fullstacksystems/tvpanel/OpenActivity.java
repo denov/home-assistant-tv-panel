@@ -11,26 +11,19 @@ import java.util.List;
 /**
  * The launcher's OK on a chip lands here (com.gathin.tvhome.action.OPEN_WIDGET with the chip's key) and goes on to
  * that chip's page. It also takes tvpanel://weather, tvpanel://solar, tvpanel://apex and tvpanel://cameras[/camera.x],
- * which Home Assistant sends to open a page (tv_panel.show, or by voice), and tvpanel://notify?message=...&title=...,
- * a message from the TV's notify entity. One entry point, so the launcher never sees a chooser. No window of its own.
+ * which Home Assistant sends to open a page (tv_panel.show, or by voice). One entry point, so the launcher never sees a
+ * chooser. No window of its own. Messages don't come this way: opening an activity can pause what's playing, so they
+ * arrive over {@link MessageService}'s connection.
  */
 public class OpenActivity extends Activity {
     @Override
     protected void onCreate(Bundle state) {
         super.onCreate(state);
+        // The app is in front for a moment: a chance to start the messages connection if it isn't running.
+        MessageService.start(this);
         Class<?> page = null;
         String key = null;
         Uri link = getIntent().getData();
-        if (link != null && "tvpanel".equals(link.getScheme()) && Ha.NOTIFY.equals(link.getHost())) {
-            // A message from Home Assistant: a toast over whatever is on screen, which keeps playing. No page opens
-            // or closes.
-            String text = Ha.notifyText(link.getQueryParameter("title"), link.getQueryParameter("message"));
-            if (!text.isEmpty()) {
-                android.widget.Toast.makeText(getApplicationContext(), text, android.widget.Toast.LENGTH_LONG).show();
-            }
-            finish();
-            return;
-        }
         if (link != null && "tvpanel".equals(link.getScheme())) {
             // A deep link (from Home Assistant, by voice) names the page, not an entity. Each page finds its own.
             String host = link.getHost();
@@ -115,6 +108,7 @@ public class OpenActivity extends Activity {
     }
 
     private static Class<?> pageFor(String page) {
+        if (Ha.SETUP.equals(page)) return StatusActivity.class;
         if (Ha.WEATHER.equals(page)) return WeatherActivity.class;
         if (Ha.SOLAR_PAGE.equals(page)) return SolarActivity.class;
         if (Ha.APEX.equals(page)) return ApexActivity.class;

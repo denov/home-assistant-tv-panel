@@ -1,6 +1,7 @@
 package com.fullstacksystems.tvpanel;
 
 import android.app.Activity;
+import android.content.SharedPreferences;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
@@ -23,9 +24,21 @@ public class StatusActivity extends Activity {
     private TextView codeView;
     private String code = "";
 
+    /** The address or token changed (a pushed config.json was taken, or the TV was paired): show it. */
+    private final SharedPreferences.OnSharedPreferenceChangeListener configChanged = (prefs, key) -> {
+        if (!"url".equals(key) && !"token".equals(key)) return;
+        main.post(() -> {
+            if (isDestroyed()) return;
+            refresh();
+            // Just paired: messages can come now.
+            MessageService.start(this);
+        });
+    };
+
     @Override
     protected void onCreate(Bundle state) {
         super.onCreate(state);
+        Config.prefs(this).registerOnSharedPreferenceChangeListener(configChanged);
         Config.importPushed(this);
         dp = getResources().getDisplayMetrics().density;
         root = new LinearLayout(this);
@@ -59,6 +72,7 @@ public class StatusActivity extends Activity {
         });
         pairing.start();
         refresh();
+        MessageService.start(this);
     }
 
     @Override
@@ -129,6 +143,7 @@ public class StatusActivity extends Activity {
 
     @Override
     protected void onDestroy() {
+        Config.prefs(this).unregisterOnSharedPreferenceChangeListener(configChanged);
         io.shutdownNow();
         super.onDestroy();
     }

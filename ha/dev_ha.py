@@ -1,9 +1,11 @@
 """Get a development Home Assistant ready for TV Panel: stand-in entities and a paired stand-in TV.
 
     ha/.venv/bin/python ha/dev_ha.py <config.json> [--tv-host host.docker.internal] [--save dev-tv.json] [--starter]
+                                     [--throwaway]
 
 <config.json> holds {"url", "token"} for an admin of a throwaway Home Assistant, such as a local Docker one. Never
-point this at your real one: it writes states and pairs a TV that doesn't exist.
+point this at your real one: it writes states and pairs a TV that doesn't exist. It refuses any address but this
+machine's (localhost, 127.0.0.1) unless you add --throwaway.
 
 1. It sets stand-in states for the kinds of entity TV Panel draws (weather, a garage door, a gate, a lock, a
    thermostat, cameras, solar, Apex probes when there are none), so the settings page and its preview have something
@@ -24,9 +26,12 @@ import os
 import threading
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 
 CODE = "123456"
+# Home Assistants this may write to without --throwaway: one on this machine.
+LOCAL = {"localhost", "127.0.0.1", "::1"}
 TV = {"id": "dev-tv", "name": "Dev TV"}
 
 STATES = {
@@ -189,9 +194,16 @@ def main() -> None:
     parser.add_argument("--port", type=int, default=8766)
     parser.add_argument("--save", help="write the stand-in TV's {url, token} here")
     parser.add_argument("--starter", action="store_true", help="replace the TVs' saved settings with the starter chips")
+    parser.add_argument("--throwaway", action="store_true", help="the Home Assistant isn't on this machine, but is one")
     args = parser.parse_args()
     with open(args.config, encoding="utf-8") as f:
         cfg = json.load(f)
+    host = urllib.parse.urlsplit(cfg["url"]).hostname
+    if host not in LOCAL and not args.throwaway:
+        raise SystemExit(
+            f"{host} isn't this machine. This writes stand-in states over real entities' ids and pairs a TV that "
+            "doesn't exist: only for a throwaway Home Assistant. Add --throwaway if that's what it is."
+        )
     ha = Ha(cfg["url"], cfg["token"])
     seed(ha)
     pair(ha, args.tv_host, args.port, args.save)

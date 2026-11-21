@@ -61,19 +61,28 @@ export function defaultName(hass, entityId) {
   return n || capitalise(entityId.split(".")[1].replace(/_/g, " "));
 }
 
-/**
- * A state as a list shows it: a number as the TV formats it, with its unit; weather in the TV chip's words; anything
- * else in Home Assistant's own words ("Heat/Cool"), when the page has them.
- */
-export function stateText(hass, entityId) {
+/** A state as the TV draws it on a chip (Ha.widget): a number formatted, or the word capitalised, and the unit. */
+export function tvValue(hass, entityId) {
   const s = hass.states[entityId];
   if (!s || MISSING.has(s.state)) return "—";
   const unit = s.attributes.unit_of_measurement;
-  if (!Number.isNaN(Number(s.state))) return unit ? `${reading(s.state)} ${unit}` : reading(s.state);
+  const v = Number.isNaN(Number(s.state)) ? capitalise(s.state.replace(/_/g, " ")) : reading(s.state);
+  return unit ? `${v} ${unit}` : v;
+}
+
+/**
+ * A state as the page's lists show it: a number as the TV formats it, with its unit; weather in the TV chip's words;
+ * anything else in Home Assistant's own words ("Heat/Cool"), when the page has them. Not for the preview, which shows
+ * what the TV draws (tvValue): the TV can't translate.
+ */
+export function stateText(hass, entityId) {
+  const s = hass.states[entityId];
+  if (!s || MISSING.has(s.state) || !Number.isNaN(Number(s.state))) return tvValue(hass, entityId);
   if (entityId.startsWith("weather.") && CONDITIONS[s.state]) return CONDITIONS[s.state][0];
   const words = typeof hass.formatEntityState === "function" ? hass.formatEntityState(s) : "";
-  const v = words && words !== s.state ? words : capitalise(s.state.replace(/_/g, " "));
-  return unit && !v.endsWith(unit) ? `${v} ${unit}` : v;
+  if (!words || words === s.state) return tvValue(hass, entityId);
+  const unit = s.attributes.unit_of_measurement;
+  return unit && !words.endsWith(unit) ? `${words} ${unit}` : words;
 }
 
 function degrees(a, key) {
@@ -105,7 +114,7 @@ export function preview(hass, chip, settings) {
     return { icon: "mdi:cctv", label: chip.label || "Cameras", value: "", tone: "blue" };
   }
   if (chip.type === "tank") {
-    const columns = (settings.tank || []).map((e) => [defaultName(hass, e), stateText(hass, e)]);
+    const columns = (settings.tank || []).map((e) => [defaultName(hass, e), tvValue(hass, e)]);
     return { icon: "mdi:fish", label: "", value: "", tone: "blue", columns };
   }
   const id = chip.entity;
@@ -115,7 +124,9 @@ export function preview(hass, chip, settings) {
   const missing = !s || MISSING.has(s.state);
   const out = (icon, label, value, tone) => ({ icon, label: chip.label || label, value, tone: missing ? "off" : tone });
   if (domain === "weather") {
-    const [text, icon] = CONDITIONS[s?.state] || [capitalise((s?.state || "").replace(/-/g, " ")), "weather-sunny"];
+    // No reading (Ha.noCondition): a grey cloud, as on the TV.
+    const [text, icon] = missing ? [name, "weather-cloudy"]
+      : CONDITIONS[s.state] || [capitalise(s.state.replace(/-/g, " ")), "weather-sunny"];
     const t = s?.attributes?.temperature;
     const unit = s?.attributes?.temperature_unit;
     const value = missing || t === undefined || t === null ? "—" : `${number(t)}${unit ? " " + unit : "°"}`;
@@ -145,7 +156,7 @@ export function preview(hass, chip, settings) {
   const icon = solar ? "mdi:solar-power" : s?.attributes?.icon
     || { temperature: "mdi:thermometer", humidity: "mdi:water-percent", power: "mdi:flash", energy: "mdi:flash" }[dc]
     || "mdi:gauge";
-  return out(icon, name, stateText(hass, id), solar ? "amber" : "blue");
+  return out(icon, name, tvValue(hass, id), solar ? "amber" : "blue");
 }
 
 /**
@@ -159,10 +170,12 @@ export function search(hass, query, exclude, domain = null, keep = null) {
     .filter((s) => !skip.has(s.entity_id))
     .filter((s) => !domain || s.entity_id.startsWith(domain + "."))
     .filter((s) => !keep || keep(s))
-    .map((s) => ({ entity_id: s.entity_id, name: friendly(hass, s.entity_id) || s.entity_id, value: stateText(hass, s.entity_id) }))
+    .map((s) => ({ entity_id: s.entity_id, name: friendly(hass, s.entity_id) || s.entity_id }))
     .filter((r) => words.every((w) => r.name.toLowerCase().includes(w) || r.entity_id.includes(w)))
     .sort((a, b) => a.name.localeCompare(b.name))
-    .slice(0, 40);
+    .slice(0, 40)
+    // Words come last: Home Assistant's formatting is slow over thousands of states, at every key typed.
+    .map((r) => ({ ...r, value: stateText(hass, r.entity_id) }));
 }
 
 // ---- what OK does (model.py's default_ok / resolve_ok: change both together) ----------------------------------

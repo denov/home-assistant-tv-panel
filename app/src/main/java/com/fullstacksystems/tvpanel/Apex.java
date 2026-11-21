@@ -24,6 +24,7 @@ final class Apex {
     /** Water probes per type: the first two by id. A third (an expansion module's) is often unplugged and wrong. */
     static final int PROBES_PER_TYPE = 2;
 
+    /** Without the integration only (see {@link Ha#data}; its data.py builds the same answer). */
     static final String TEMPLATE = "{% set ns = namespace(out=[]) %}"
             + "{% set probes = states.sensor | selectattr('attributes.apex_probe_type', 'defined') | list %}"
             + "{% set others = states | selectattr('entity_id', 'search',"

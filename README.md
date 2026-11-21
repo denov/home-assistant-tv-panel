@@ -15,8 +15,9 @@ pressed from the remote (see [What OK does](#what-ok-does)).
 Two parts, both in this repo:
 
 - **The TV Panel integration** for Home Assistant (`custom_components/tv_panel`). It pairs the TV: the TV shows a
-  code, you type it into Home Assistant, and the TV gets its own local-only user and token. Removing the integration
-  signs the TV out.
+  code, you type it into Home Assistant, and the TV gets its own user and token: a normal user, not an admin, that only
+  works from the local network. The integration works out what the TV draws, so the TV needs nothing more. Removing the
+  integration signs the TV out.
 - **The TV Panel app** for Android TV / Google TV (`app/`, package `com.fullstacksystems.tvpanel`). It draws the pages,
   and serves the chips to the launcher.
 
@@ -36,7 +37,7 @@ The pages work with any launcher. The **chip row** needs a launcher that reads T
 1. Download **TV Panel** in HACS.
 1. Restart Home Assistant.
 1. Install the app on the TV (see [The app on the TV](#the-app-on-the-tv)) and open it. It shows a six-digit code and
-   the TV's address.
+   the TV's address. (With TV Panel Launcher, OK on the **Pair with Home Assistant** chip on Home opens it.)
 1. Set up the integration from the UI, type the address the TV shows, then enter the code. (The app also announces
    itself over mDNS while it's open, so Home Assistant may offer the TV under **Settings** → **Devices & services**;
    that doesn't work on every TV and network yet.)
@@ -66,6 +67,8 @@ Home Assistant gives the TV its local URL (Settings > System > Network). If that
 as `homeassistant.local`, the TV uses the address the pairing came from instead.
 
 ## Configure in Home Assistant
+
+![The TV Panel page in Home Assistant: a live preview of the TV's row, and its chips](https://raw.githubusercontent.com/denov/home-assistant-tv-panel/main/docs/settings-page.png)
 
 Choose **TV Panel** in the sidebar (admins only). With more than one TV, pick it at the top. The page shows a preview
 of the TV's row, live from your Home Assistant, and these settings:
@@ -183,7 +186,8 @@ ha/.venv/bin/python ha/dev_ha.py dev.json     # stand-in entities, a stand-in TV
 ha/.venv/bin/python ha/page_check.py dev.json --shot page.png   # the page in headless Chrome
 ```
 
-Never point `dev_ha.py` at your real Home Assistant: it writes states and pairs a TV that doesn't exist.
+Never point `dev_ha.py` at your real Home Assistant: it writes states and pairs a TV that doesn't exist. It refuses
+any address but `localhost` unless you add `--throwaway`.
 
 Pairing through the integration replaces the config file. If you use one anyway, keep it out of git; the app copies
 it into its own storage and deletes the copy on the TV.
@@ -199,6 +203,10 @@ draws them like this:
 - A label and value that are tab-separated lists of the same length are drawn as columns, each label over its value.
 - OK on a chip with `open = 1` sends `com.gathin.tvhome.action.OPEN_WIDGET` to this app, with the chip's `key` as an
   extra. TV Panel opens the page, or carries out the chip's action (see [What OK does](#what-ok-does)).
+
+Before it's paired (or once Home Assistant has signed it out), the row is one chip, **Pair with Home Assistant**, and
+OK on it opens the page with the pairing code. So TV Panel Launcher leaves TV Panel's own tile off Home; Hold OK on any
+chip opens TV Panel too.
 
 The app only fetches while the launcher asks, at most every 12 s, and has no background service.
 
@@ -290,8 +298,26 @@ actions:
       message: The door has been open for 20 minutes
 ```
 
-The TV shows "Garage: The door has been open for 20 minutes". A TV that's off isn't turned on, and the message is
-dropped. Like `tv_panel.show`, it needs the Android TV Remote integration for the same TV.
+The TV shows "Garage: The door has been open for 20 minutes". Nothing opens on the TV, so what's playing keeps
+playing. A TV that's off isn't turned on, and the message is dropped.
+
+To have messages pause what's playing, turn on the TV's **Pause for messages** switch (on its device page, under
+Configuration). It's off unless you turn it on.
+
+The TV Panel app keeps a connection open to Home Assistant for its messages, so it shows a quiet "TV Panel" entry in
+the TV's notifications. Messages need app 0.6.0 or later. They don't need the Android TV Remote integration.
+
+## Troubleshooting
+
+- **Diagnostics:** **Settings** → **Devices & services** → **TV Panel** → **⋮** → **Download diagnostics**. It has the
+  TV's settings, whether its user is an admin, whether the TV is listening for messages, the Android TV Remote entities
+  it uses and what its chip row reads. It leaves out the TV's address, its user and your inverter serials.
+- **A TV paired before 0.6.0** got an admin user, because older apps rendered their own templates. With app 0.6.0 the
+  integration makes it a normal user the first time the TV asks for its chips. An older app keeps working as before.
+- **The TV got a new address:** nothing to do. The integration follows it from the TV's own requests, so
+  `tv_panel.show` still finds the TV's Android TV Remote.
+- **Messages don't show:** check diagnostics for `"listening": 1`. A 0 means the TV is off or its app is older than
+  0.6.0. After the TV restarts, the app connects again on its own. If it doesn't, open TV Panel once from the app grid.
 
 ## License
 

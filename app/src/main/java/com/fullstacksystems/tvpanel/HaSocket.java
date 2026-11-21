@@ -19,9 +19,9 @@ import java.util.Base64;
 import javax.net.ssl.SSLSocketFactory;
 
 /**
- * Just enough of Home Assistant's websocket API for one-shot commands (recorder statistics): connect, log in, send a
- * command, wait for its result, close. Some data, long-term statistics among them, is only available here, not over
- * REST. Blocking: call it off the main thread. No library, so the app stays small.
+ * Just enough of Home Assistant's websocket API: one-shot commands (recorder statistics; some data is only available
+ * here, not over REST) and one subscription that stays open (tv_panel/messages, see {@link Messages}). Blocking: call
+ * it off the main thread. No library, so the app stays small.
  */
 final class HaSocket implements Closeable {
     private static final int CONNECT_MS = 6000;
@@ -35,6 +35,23 @@ final class HaSocket implements Closeable {
     private final SecureRandom random = new SecureRandom();
     private int nextId = 1;
 
+    /** Home Assistant said no to the token (auth_invalid). */
+    static final class Refused extends IOException {
+        Refused(String message) {
+            super(message);
+        }
+    }
+
+    /** A command Home Assistant answered with an error: {@code code} is its error code, such as unknown_command. */
+    static final class CommandError extends IOException {
+        final String code;
+
+        CommandError(String code, String message) {
+            super(message);
+            this.code = code;
+        }
+    }
+
     private HaSocket(Socket socket) throws IOException {
         this.socket = socket;
         this.in = socket.getInputStream();
@@ -43,6 +60,14 @@ final class HaSocket implements Closeable {
 
     /** Connected and logged in, or an IOException that says why. */
     static HaSocket open(String baseUrl, String token) throws IOException {
+        return open(baseUrl, token, READ_MS);
+    }
+
+    /**
+     * The same, with reads giving up after {@code readMs}. A subscription waits for as long as Home Assistant keeps the
+     * connection: it pings every 55 s (answered in {@link #readMessage()}), so silence for longer means it's gone.
+     */
+    static HaSocket open(String baseUrl, String token, int readMs) throws IOException {
         URI u = URI.create(baseUrl);
         boolean tls = "https".equalsIgnoreCase(u.getScheme());
         String host = u.getHost();
@@ -59,7 +84,8 @@ final class HaSocket implements Closeable {
             if (!"auth_required".equals(hello.optString("type"))) throw new IOException("unexpected " + hello.optString("type"));
             ws.sendText(new JSONObject().put("type", "auth").put("access_token", token).toString());
             JSONObject auth = new JSONObject(ws.readMessage());
-            if (!"auth_ok".equals(auth.optString("type"))) throw new IOException("Home Assistant refused the token");
+            if (!"auth_ok".equals(auth.optString("type"))) throw new Refused("Home Assistant refused the token");
+            s.setSoTimeout(readMs);
             return ws;
         } catch (JSONException e) {
             closeQuietly(s);
@@ -79,15 +105,39 @@ final class HaSocket implements Closeable {
             while (true) {
                 JSONObject r = new JSONObject(readMessage());
                 if (r.optInt("id", -1) != id || !"result".equals(r.optString("type"))) continue;
-                if (!r.optBoolean("success")) {
-                    JSONObject err = r.optJSONObject("error");
-                    throw new IOException(err == null ? "command failed" : err.optString("message", "command failed"));
-                }
+                if (!r.optBoolean("success")) throw error(r);
                 return r.opt("result");
             }
         } catch (JSONException e) {
             throw new IOException("unreadable answer: " + e.getMessage());
         }
+    }
+
+    /** Subscribes with a command of {@code type} and returns its id: its events then come from {@link #next()}. */
+    int subscribe(String type) throws IOException {
+        try {
+            JSONObject msg = new JSONObject().put("type", type);
+            int id = nextId;
+            call(msg);
+            return id;
+        } catch (JSONException e) {
+            throw new IOException("unreadable answer: " + e.getMessage());
+        }
+    }
+
+    /** The next message from Home Assistant, waiting for it. */
+    JSONObject next() throws IOException {
+        try {
+            return new JSONObject(readMessage());
+        } catch (JSONException e) {
+            throw new IOException("unreadable answer: " + e.getMessage());
+        }
+    }
+
+    private static CommandError error(JSONObject result) {
+        JSONObject err = result.optJSONObject("error");
+        String code = err == null ? "" : err.optString("code");
+        return new CommandError(code, err == null ? "command failed" : err.optString("message", "command failed"));
     }
 
     @Override

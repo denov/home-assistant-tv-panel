@@ -9,6 +9,11 @@
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <!-- mDNS on Wi-Fi TVs, so Home Assistant finds the TV while its TV Panel page is open. -->
     <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE" />
+    <!-- MessageService: the connection Home Assistant's messages arrive on, kept while other apps are in front,
+         and started again at boot. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
     <application
         android:allowBackup="false"
@@ -44,8 +49,8 @@
                 <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>
             <!-- tvpanel://weather, tvpanel://solar, tvpanel://apex and tvpanel://cameras[/camera.x], so Home Assistant can open a page
-                 (tv_panel.show, or remote.turn_on on the Android TV Remote integration with activity: tvpanel://weather), and
-                 tvpanel://notify?message=...&title=... for the TV's notify entity. -->
+                 (tv_panel.show, or remote.turn_on on the Android TV Remote integration with activity: tvpanel://weather).
+                 Messages come over MessageService instead, so nothing opens for them. -->
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
@@ -84,6 +89,25 @@
             android:exported="false"
             android:excludeFromRecents="true"
             android:taskAffinity="" />
+
+        <!-- Home Assistant's messages for this TV, as toasts over whatever is playing (see Messages.java). -->
+        <service
+            android:name=".MessageService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Keeps a connection to the owner's Home Assistant server so its messages show on the TV" />
+        </service>
+
+        <receiver
+            android:name=".StartReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
 
         <provider
             android:name=".WidgetProvider"

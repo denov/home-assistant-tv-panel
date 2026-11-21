@@ -3,6 +3,7 @@
 from http import HTTPStatus
 
 from homeassistant.core import HomeAssistant
+from homeassistant.setup import async_setup_component
 
 from .common import paired_tv
 
@@ -55,7 +56,7 @@ async def test_02_settings_are_served_in_the_new_shape(hass: HomeAssistant, hass
 
 async def test_the_row_switch_turns_the_row_off(hass: HomeAssistant, hass_client_no_auth) -> None:
     _, token = await paired_tv(hass, OPTIONS)
-    switch = next(s.entity_id for s in hass.states.async_all("switch"))
+    switch = "switch.bravia_widget_row"
     await hass.services.async_call("switch", "turn_off", {"entity_id": switch}, blocking=True)
     assert (await (await _get(hass_client_no_auth, token)).json())["row"] is False
 
@@ -81,3 +82,21 @@ async def test_needs_a_token(hass: HomeAssistant, hass_client_no_auth) -> None:
     await paired_tv(hass, OPTIONS)
     client = await hass_client_no_auth()
     assert (await client.get("/api/tv_panel/config")).status == HTTPStatus.UNAUTHORIZED
+
+
+async def test_the_tvs_new_address_is_kept(hass: HomeAssistant, hass_client_no_auth) -> None:
+    """tv_panel.show finds the TV's Android TV Remote by address. A TV that got a new address from the router says so
+    with its next request, and the entry follows."""
+    # Through a proxy Home Assistant trusts, as the test client is, the request comes from the forwarded address.
+    await async_setup_component(hass, "http", {"http": {"use_x_forwarded_for": True, "trusted_proxies": ["127.0.0.1"]}})
+    entry, token = await paired_tv(hass, OPTIONS)
+    client = await hass_client_no_auth()
+    auth = {"Authorization": f"Bearer {token}"}
+
+    await client.get("/api/tv_panel/config", headers=auth | {"X-Forwarded-For": "192.168.1.77"})
+    assert entry.data["host"] == "192.168.1.77"
+
+    # Only a LAN address: not the machine itself, nor one from the internet.
+    for remote in ("127.0.0.1", "8.8.8.8"):
+        await client.get("/api/tv_panel/config", headers=auth | {"X-Forwarded-For": remote})
+        assert entry.data["host"] == "192.168.1.77", remote

@@ -46,6 +46,9 @@
     "switch": {
       "widget_row": {
         "name": "Widget row"
+      },
+      "pause_for_messages": {
+        "name": "Pause for messages"
       }
     }
   },

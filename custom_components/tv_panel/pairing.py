@@ -6,7 +6,7 @@ from datetime import timedelta
 from typing import Any
 
 import aiohttp
-from homeassistant.auth.const import GROUP_ID_ADMIN
+from homeassistant.auth.const import GROUP_ID_ADMIN, GROUP_ID_USER
 from homeassistant.auth.models import TOKEN_TYPE_LONG_LIVED_ACCESS_TOKEN, User
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
@@ -47,13 +47,8 @@ def ha_url(hass: HomeAssistant) -> str:
 
 
 async def async_create_user(hass: HomeAssistant, tv_name: str) -> tuple[User, str]:
-    """A user for this TV, with a long-lived token. Local network only, and no way to log in with it.
-
-    Admin for now, because the TV app renders its own templates through /api/template, which needs admin.
-    """
-    user = await hass.auth.async_create_user(
-        f"{USER_NAME} ({tv_name})", group_ids=[GROUP_ID_ADMIN], local_only=True
-    )
+    """A normal user for this TV, with a long-lived token. Local network only, and no way to log in with it."""
+    user = await hass.auth.async_create_user(f"{USER_NAME} ({tv_name})", group_ids=[GROUP_ID_USER], local_only=True)
     refresh = await hass.auth.async_create_refresh_token(
         user,
         client_name=f"{CLIENT_NAME} ({tv_name})",
@@ -97,4 +92,8 @@ async def async_pair(
         await async_remove_user(hass, user.id)
         error = answer.get("error") if isinstance(answer, dict) else None
         raise PairError(error if error in ("invalid_code", "cannot_reach_ha", "token_refused") else "cannot_connect")
+    if answer.get("needs_admin", True):
+        # App 0.5.0 and older render their own templates through /api/template, which only an admin may call. They
+        # don't say "needs_admin": false. Once updated, the app asks /api/tv_panel/data instead and the user drops back.
+        await hass.auth.async_update_user(user, group_ids=[GROUP_ID_ADMIN])
     return answer, user.id
