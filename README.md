@@ -1,5 +1,9 @@
 # TV Panel
 
+Brought to you by [Fullstack Systems](https://fullstacksystems.com).
+
+<a href="https://www.buymeacoffee.com/denov" target="_blank" rel="noreferrer noopener"><img src="https://img.buymeacoffee.com/button-api/?text=Buy%20me%20a%20coffee&emoji=&slug=denov&button_colour=FFDD00&font_colour=000000&font_family=Bree&outline_colour=000000&coffee_colour=ffffff" alt="Buy me a coffee" height="40"></a>
+
 Home Assistant on an Android TV's home screen: a row of live chips under the clock (weather, cameras, garage door, a
 reef tank, solar), and full pages for weather, solar, the tank and cameras that you can also open by voice.
 
