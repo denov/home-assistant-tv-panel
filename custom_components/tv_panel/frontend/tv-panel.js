@@ -141,7 +141,7 @@ class TvPanelSettings extends HTMLElement {
     const root = this.shadowRoot;
     const focus = root.activeElement?.dataset?.focus;
     root.innerHTML = `<style>${CSS}</style>
-      <div class="toolbar">
+      <div class="top"><div class="toolbar">
         <ha-menu-button></ha-menu-button>
         <div class="title">TV Panel</div>
         ${this.tvs.length > 1 ? `<select data-action="tv">${this.tvs.map((t) =>
@@ -149,22 +149,25 @@ class TvPanelSettings extends HTMLElement {
         <span class="grow"></span>
         <button class="secondary" data-action="revert" ${this.dirty ? "" : "disabled"}>Undo changes</button>
         <button class="primary" data-action="save" ${this.dirty || (this.s && !this.s.saved) ? "" : "disabled"}>Save</button>
-      </div>
+      </div>${this.s ? this.onTv() : ""}</div>
       <div class="content">${this.s ? this.body() : this.empty()}</div>`;
     const menu = root.querySelector("ha-menu-button");
     if (menu) {
       menu.hass = this._hass;
       menu.narrow = this._narrow;
     }
+    this.previewHtml = null;
     this.renderPreview();
     this.renderStatus();
     for (const list of Object.keys(this.queries)) this.renderResults(list);
-    // Refit when the page changes width (the sidebar opens, the window or phone turns).
+    // Refit when the page changes width (the sidebar opens, the window or phone turns) and when the row does (an icon
+    // draws, a value gets longer). In the next frame, so the refit isn't a change inside the observer's own delivery.
     this.resize?.disconnect();
     const tv = root.querySelector(".tv");
     if (tv && window.ResizeObserver) {
-      this.resize = new ResizeObserver(() => this.fitPreview());
+      this.resize = new ResizeObserver(() => requestAnimationFrame(() => this.fitPreview()));
       this.resize.observe(tv);
+      this.resize.observe(root.getElementById("preview"));
     }
     if (focus) {
       const el = root.querySelector(`[data-focus="${focus}"]`);
@@ -181,20 +184,25 @@ class TvPanelSettings extends HTMLElement {
       : "No TV is set up yet. Add the TV Panel integration under Settings → Devices &amp; services, then come back here."}</p></div>`;
   }
 
-  body() {
-    const s = this.s;
-    const has = (t) => s.chips.some((c) => c.type === t);
-    return `
+  /** Pinned under the toolbar, so the TV's row stays in view while the chips below it change. */
+  onTv() {
+    return `<div class="pin">
       <div class="status" id="status"></div>
-      ${s.saved ? "" : `<div class="note">Not saved yet. This is the TV's current setup, from the <b>tv_widget</b> label and the
-        camera order helper. Save to make it the TV's settings.</div>`}
-      <div class="card">
+      <div class="card preview">
         <div class="head"><h2>On the TV</h2>${this.rowSwitch() ? `<label class="toggle">Widget row
           <input type="checkbox" data-action="row" ${chips.rowOn(this._hass, this.rowSwitch()) ? "checked" : ""}></label>` : ""}</div>
         <div class="tv"><div class="fit"><div class="row" id="preview"></div></div></div>
         <p class="hint" id="row-hint"></p>
       </div>
+    </div>`;
+  }
 
+  body() {
+    const s = this.s;
+    const has = (t) => s.chips.some((c) => c.type === t);
+    return `
+      ${s.saved ? "" : `<div class="note">Not saved yet. This is the TV's current setup, from the <b>tv_widget</b> label and the
+        camera order helper. Save to make it the TV's settings.</div>`}
       <div class="card">
         <h2>Chips</h2>
         <p class="hint">In the order they sit on the TV's home screen. Drag a chip, or use the arrows. A label replaces the
@@ -358,12 +366,9 @@ class TvPanelSettings extends HTMLElement {
     if (toggle) toggle.checked = on;
     const hint = this.shadowRoot.getElementById("row-hint");
     if (hint) hint.textContent = on ? "" : "The widget row is off: the TV shows no chips. It takes effect straight away; no Save needed.";
-    if (!on) {
-      box.innerHTML = "";
-      this.fitPreview();
-      return;
-    }
-    box.innerHTML = this.s.chips.slice(0, 8).map((c) => {
+    let html = "";
+    if (on) {
+      html = this.s.chips.slice(0, 8).map((c) => {
       const p = chips.preview(this._hass, c, this.s);
       const icon = `<ha-icon icon="${esc(p.icon)}" style="color:${TONES[p.tone]}"></ha-icon>`;
       if (p.columns) {
@@ -372,8 +377,12 @@ class TvPanelSettings extends HTMLElement {
       }
       if (!p.value) return `<div class="chip only" title="${esc(p.label)}">${icon}</div>`;
       return `<div class="chip">${icon}<div class="col"><div class="l">${esc(p.label)}</div><div class="v">${esc(p.value)}</div></div></div>`;
-    }).join("") || `<div class="sub">No chips: the row is empty.</div>`;
-    if (this.s.chips.length > 8) box.insertAdjacentHTML("beforeend", `<div class="sub">The TV shows the first 8.</div>`);
+      }).join("") || `<div class="sub">No chips: the row is empty.</div>`;
+      if (this.s.chips.length > 8) html += `<div class="sub">The TV shows the first 8.</div>`;
+    }
+    if (html === this.previewHtml) return;
+    this.previewHtml = html;
+    box.innerHTML = html;
     this.fitPreview();
   }
 
@@ -621,6 +630,12 @@ const CSS = `
   .tv { background: radial-gradient(ellipse at 40% 30%, #1d4d1d, #071207 70%); border-radius: 10px; padding: 18px;
     overflow: hidden; box-sizing: border-box; }
   .fit { position: relative; overflow: hidden; max-width: 100%; }
+  /* Sized before it draws its icon (it draws a moment later), so the row is measured at its real width. */
+  .chip ha-icon { display: inline-flex; flex: none; width: 24px; height: 24px; }
+  .top { position: sticky; top: 0; z-index: 4; background: var(--primary-background-color); }
+  .pin { max-width: 900px; margin: 0 auto; padding: 16px 16px 0; box-sizing: border-box; }
+  .pin .card { margin-bottom: 0; box-shadow: 0 6px 10px -8px rgba(0, 0, 0, 0.5); }
+  .pin .hint:empty { display: none; }
   .row { position: absolute; left: 0; top: 0; display: flex; gap: 10px; align-items: stretch; min-height: 52px;
     width: max-content; transform-origin: left top; }
   .tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--divider-color); margin: -4px 0 14px; }
@@ -673,8 +688,13 @@ const CSS = `
   .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-bottom: 12px; }
   .slot { border-radius: 6px; padding: 14px 8px; text-align: center; background: #1b2430; color: #fff; font-size: 14px; }
   .slot.free { background: transparent; border: 1px dashed var(--divider-color); color: var(--secondary-text-color); }
+  /* A phone on its side: pinning would take half the screen. */
+  @media (max-height: 560px) { .top { position: static; } }
   @media (max-width: 600px) {
     .content { padding: 8px; }
+    .pin { padding: 8px 8px 0; }
+    .pin .card { padding: 10px 12px; }
+    .tv { padding: 10px; }
     input.label { width: 100px; }
     .toolbar button.secondary { display: none; }
   }

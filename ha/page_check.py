@@ -7,7 +7,8 @@ signed in by putting the token where Home Assistant's frontend keeps its own; th
 CHROME to use another binary than google-chrome.
 
 It exists because the page once rendered only when opened from the sidebar: Home Assistant set its properties before
-the element was defined, and a refresh showed nothing. It also fails when the preview of the TV's row scrolls.
+the element was defined, and a refresh showed nothing. It also fails when the preview of the TV's row scrolls, is
+clipped after a state change redraws it, or scrolls out of view.
 """
 
 from __future__ import annotations
@@ -51,7 +52,30 @@ SCROLL = """(() => {
     if (el.localName === 'tv-panel-settings') return el;
     if (el.shadowRoot) { const f = walk(el.shadowRoot); if (f) return f; } } return null; };
   const el = walk(document);
-  el && el.shadowRoot.querySelector(%s)?.scrollIntoView({block: 'start'});
+  el && el.shadowRoot.querySelector(%s)?.scrollIntoView({block: 'end'});
+})()"""
+
+
+# After the loads: redraw the preview as every state change in Home Assistant does, then scroll to the bottom. The row
+# must still fit (it once clipped: measured before its icons drew) and stay in view while the chips are edited.
+LIVE = """(async () => {
+  const walk = (root) => { for (const el of root.querySelectorAll('*')) {
+    if (el.localName === 'tv-panel-settings') return el;
+    if (el.shadowRoot) { const f = walk(el.shadowRoot); if (f) return f; } } return null; };
+  const el = walk(document);
+  if (!el) return JSON.stringify({});
+  const root = el.shadowRoot;
+  const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+  const clip = () => Math.round(root.getElementById('preview').getBoundingClientRect().right
+    - root.querySelector('.fit').getBoundingClientRect().right);
+  el.live();
+  await wait(1500);
+  const clipped = clip();
+  root.querySelector('.content').lastElementChild.scrollIntoView({block: 'end'});
+  await wait(800);
+  const tv = root.querySelector('.tv').getBoundingClientRect();
+  return JSON.stringify({clipped, scrolled: Math.round(window.scrollY || document.scrollingElement.scrollTop),
+    tvTop: Math.round(tv.top), tvBottom: Math.round(tv.bottom), height: innerHeight});
 })()"""
 
 
@@ -144,10 +168,16 @@ def main() -> int:
             ok = seen["element"] and seen["rendered"] > 0 and seen["overflow"] == 0
             failed |= not ok
             print(f"{'ok  ' if ok else 'FAIL'} {label}: {seen}")
+        after = json.loads(
+            page.call("Runtime.evaluate", expression=LIVE, awaitPromise=True, returnByValue=True)["result"]["value"]
+        )
+        ok = bool(after) and after["clipped"] <= 1 and after["tvTop"] >= 0 and after["tvBottom"] <= after["height"]
+        failed |= not ok
+        print(f"{'ok  ' if ok else 'FAIL'} after a state change and a scroll to the bottom: {after}")
         if args.shot:
             if args.click:
                 page.call("Runtime.evaluate", expression=(SCROLL % json.dumps(args.click)).replace(
-                    "?.scrollIntoView({block: 'start'})", "?.click()"))
+                    "?.scrollIntoView({block: 'end'})", "?.click()"))
                 time.sleep(0.5)
             if args.show:
                 page.call(
