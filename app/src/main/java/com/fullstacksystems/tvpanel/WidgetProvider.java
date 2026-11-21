@@ -23,7 +23,9 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * last fetch, and when that is older than {@link #FRESH_MS} it fetches from Home Assistant in the background and
  * calls notifyChange, so the launcher reads again. Off screen, nothing is fetched.
  *
- * Only the launcher (and the ADB shell, for checks) get rows: the garage door's state is nobody else's business.
+ * Only the launchers with the widget row (and the ADB shell, for checks) get rows: the garage door's state is nobody
+ * else's business. TV Panel Launcher is the fork with the row (github.com/denov/tv-panel-launcher); CleanYourTV's own
+ * launcher has the same contract.
  */
 public class WidgetProvider extends ContentProvider {
     static final String[] COLUMNS = {"key", "label", "value", "icon", "open"};
@@ -31,8 +33,8 @@ public class WidgetProvider extends ContentProvider {
     /** Rows older than this are dropped when Home Assistant stops answering, rather than shown as current. */
     private static final long STALE_MS = 10 * 60_000;
     private static final int ICON_PX = 72;
-    private static final String LAUNCHER = "com.gathin.tvhome";
-    private static final String SHELL = "com.android.shell";
+    private static final java.util.Set<String> READERS = new java.util.HashSet<>(java.util.Arrays.asList(
+            "com.fullstacksystems.tvhome", "com.gathin.tvhome", "com.android.shell"));
 
     private static volatile List<Ha.Widget> rows = Collections.emptyList();
     private static volatile long fetchedAt = -1;
@@ -106,6 +108,10 @@ public class WidgetProvider extends ContentProvider {
         });
     }
 
+    static boolean mayRead(String caller) {
+        return caller != null && READERS.contains(caller);
+    }
+
     static List<Ha.Widget> current() {
         return rows;
     }
@@ -122,8 +128,7 @@ public class WidgetProvider extends ContentProvider {
     @Override
     public Cursor query(Uri uri, String[] projection, String selection, String[] args, String sort) {
         MatrixCursor out = new MatrixCursor(COLUMNS);
-        String caller = getCallingPackage();
-        if (!LAUNCHER.equals(caller) && !SHELL.equals(caller)) return out;
+        if (!mayRead(getCallingPackage())) return out;
         long now = SystemClock.elapsedRealtime();
         if (fetchedAt < 0 || now - fetchedAt > FRESH_MS) refresh(uri);
         List<Ha.Widget> list = rows;

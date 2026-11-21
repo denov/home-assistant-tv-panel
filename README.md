@@ -19,8 +19,9 @@ Two parts, both in this repo:
 - **The TV Panel app** for Android TV / Google TV (`app/`, package `com.fullstacksystems.tvpanel`). It draws the pages,
   and serves the chips to the launcher.
 
-The pages work with any launcher. The **chip row** needs a launcher that reads TV Panel's widget provider; today that's
-a modified [CleanYourTV](https://github.com/Gathin23/cleanyourtv) launcher (see [Launcher](#launcher)).
+The pages work with any launcher. The **chip row** needs a launcher that reads TV Panel's widget provider:
+[TV Panel Launcher](https://github.com/denov/tv-panel-launcher), our fork of the
+[CleanYourTV](https://github.com/Gathin23/cleanyourtv) launcher (see [Launcher](#launcher)).
 
 ## Installation
 
@@ -152,8 +153,8 @@ entity's `weather.get_forecasts`. Changes show up on the TV within about 15 seco
 
 ## Build
 
-JDK 17, Android SDK platform 34, build-tools 34. `install.sh` sideloads over ADB with the CleanYourTV `tools/tv.py`
-client, from a CleanYourTV checkout next to this one.
+JDK 17, Android SDK platform 34, build-tools 34. `install.sh` sideloads over ADB with `tools/tv.py` from a
+[TV Panel Launcher](https://github.com/denov/tv-panel-launcher) checkout next to this one (or a CleanYourTV one).
 
 ```bash
 ./gradlew testReleaseUnitTest assembleRelease      # JVM tests and the APK
@@ -167,13 +168,14 @@ it into its own storage and deletes the copy on the TV.
 ## Launcher
 
 The app publishes its chips at `content://com.fullstacksystems.tvpanel.widgets/widgets`, with the columns `key`,
-`label`, `value`, `icon` (a 72 px PNG) and `open` (0 or 1). Only the launcher (`com.gathin.tvhome`) and the ADB shell
-get rows. A launcher draws them like this:
+`label`, `value`, `icon` (a 72 px PNG) and `open` (0 or 1). Only [TV Panel Launcher](https://github.com/denov/tv-panel-launcher)
+(`com.fullstacksystems.tvhome`), CleanYourTV's launcher (`com.gathin.tvhome`) and the ADB shell get rows. A launcher
+draws them like this:
 
 - A row with an empty value is its icon alone.
 - A label and value that are tab-separated lists of the same length are drawn as columns, each label over its value.
 - OK on a chip with `open = 1` sends `com.gathin.tvhome.action.OPEN_WIDGET` to this app, with the chip's `key` as an
-  extra. TV Panel opens the page, or toggles the garage door after a second OK.
+  extra. TV Panel opens the page, or carries out the chip's action (see [What OK does](#what-ok-does)).
 
 The app only fetches while the launcher asks, at most every 12 s, and has no background service.
 

@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # Build TV Panel, install it on the TV and, optionally, push its Home Assistant address and token.
-#   TV_HOST=<tv ip> ./install.sh [config.json]      (uses ../cleanyourtv/tools; set CLEANYOURTV to move it)
+#   TV_HOST=<tv ip> ./install.sh [config.json]
+# The ADB tools (tools/tv.py and its venv) come from a TV Panel Launcher checkout next to this one, else a CleanYourTV
+# one; set TV_TOOLS to another tools folder.
 #   # {"url": "http://192.168.1.10:8123", "token": "..."}
 set -euo pipefail
 CONFIG="${1:-}"
@@ -11,7 +13,11 @@ if [ -n "$CONFIG" ]; then
 fi
 : "${TV_HOST:?set TV_HOST to the TV IP address}"
 cd "$(dirname "$0")"
-TOOLS="$(cd "${CLEANYOURTV:-../cleanyourtv}/tools" && pwd)"
+TOOLS=""
+for d in ${TV_TOOLS:-} ../tv-panel-launcher/tools "${CLEANYOURTV:-../cleanyourtv}/tools"; do
+  if [ -f "$d/tv.py" ]; then TOOLS="$(cd "$d" && pwd)"; break; fi
+done
+[ -n "$TOOLS" ] || { echo "No tools/tv.py: clone github.com/denov/tv-panel-launcher next to this repo, or set TV_TOOLS." >&2; exit 1; }
 PY=$TOOLS/venv/bin/python
 [ -x "$PY" ] || PY=$TOOLS/venv/Scripts/python.exe
 export MSYS_NO_PATHCONV=1
