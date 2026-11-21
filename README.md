@@ -14,14 +14,31 @@ Two parts, both in this repo:
 The pages work with any launcher. The **chip row** needs a launcher that reads TV Panel's widget provider; today that's
 a modified [CleanYourTV](https://github.com/Gathin23/cleanyourtv) launcher (see [Launcher](#launcher)).
 
-## Install
+## Installation
 
-1. **The integration:** in HACS, add this repository as a custom repository (type *Integration*), install
-   **TV Panel**, and restart Home Assistant.
-2. **The app:** build and sideload it (see [Build](#build)).
-3. **Pair:** open TV Panel on the TV; it shows a six-digit code and its address. In Home Assistant, open
-   **Settings > Devices & services**. The TV usually shows up as discovered; press **Add** and enter the code. If it
-   doesn't, add the **TV Panel** integration and type the address the TV shows.
+### Installation via HACS
+
+[![Open your Home Assistant instance and open a repository inside the Home Assistant Community Store.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=denov&repository=home-assistant-tv-panel&category=Integration)
+
+1. Use the button above to open the repository in HACS. HACS offers to add it as a custom repository. You can also do
+   that by hand: **HACS** → **⋮** → **Custom repositories**, paste `https://github.com/denov/home-assistant-tv-panel`
+   and choose type **Integration**.
+1. Download **TV Panel** in HACS.
+1. Restart Home Assistant.
+1. Install the app on the TV (see [Build](#build)) and open it. It shows a six-digit code and the TV's address.
+1. Home Assistant offers the TV under **Settings** → **Devices & services** while the app is open; press **Add** and
+   enter the code. Or set it up from the UI and type the address the TV shows:
+
+<a href="https://my.home-assistant.io/redirect/config_flow_start/?domain=tv_panel" target="_blank" rel="noreferrer noopener"><img src="https://my.home-assistant.io/badges/config_flow_start.svg" alt="Add Integration"></a>
+
+### Manual Installation
+
+1. Download `tv_panel.zip` from the [latest release](https://github.com/denov/home-assistant-tv-panel/releases/latest).
+2. Unzip it into `custom_components/tv_panel` in your Home Assistant configuration directory.
+3. Restart Home Assistant.
+4. Open the app on the TV and set up the integration using the UI, as above.
+
+### Pairing
 
 Home Assistant gives the TV its local URL (Settings > System > Network). If that's a name the TV can't look up, such
 as `homeassistant.local`, the TV uses the address the pairing came from instead.
