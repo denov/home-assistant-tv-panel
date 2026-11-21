@@ -45,7 +45,7 @@
         "data_description": {
           "entities": "Shown in this order on the TV's home screen. Cameras become one chip that opens the camera grid; Apex probes become one tank chip.",
           "camera_order": "Cameras listed here fill the grid first, left to right, top row first. The rest follow by name.",
-          "solar": "Optional. Where each inverter sits on your roof, for the solar page: {\"arrays\": [{\"name\": \"Array 1\", \"panels\": [{\"id\": \"<inverter serial>\", \"x\": 0, \"y\": 0, \"w\": 2, \"h\": 1}]}]}"
+          "solar": "Optional. Where each inverter sits on your roof, for the solar page: arrays, each with a name and panels (inverter serial, x, y, w, h). The README has an example."
         }
       }
     }
