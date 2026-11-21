@@ -61,13 +61,19 @@ export function defaultName(hass, entityId) {
   return n || capitalise(entityId.split(".")[1].replace(/_/g, " "));
 }
 
-/** A state as the TV shows it in a list: the value and its unit. */
+/**
+ * A state as a list shows it: a number as the TV formats it, with its unit; weather in the TV chip's words; anything
+ * else in Home Assistant's own words ("Heat/Cool"), when the page has them.
+ */
 export function stateText(hass, entityId) {
   const s = hass.states[entityId];
   if (!s || MISSING.has(s.state)) return "—";
   const unit = s.attributes.unit_of_measurement;
-  const v = Number.isNaN(Number(s.state)) ? capitalise(s.state.replace(/_/g, " ")) : reading(s.state);
-  return unit ? `${v} ${unit}` : v;
+  if (!Number.isNaN(Number(s.state))) return unit ? `${reading(s.state)} ${unit}` : reading(s.state);
+  if (entityId.startsWith("weather.") && CONDITIONS[s.state]) return CONDITIONS[s.state][0];
+  const words = typeof hass.formatEntityState === "function" ? hass.formatEntityState(s) : "";
+  const v = words && words !== s.state ? words : capitalise(s.state.replace(/_/g, " "));
+  return unit && !v.endsWith(unit) ? `${v} ${unit}` : v;
 }
 
 function degrees(a, key) {

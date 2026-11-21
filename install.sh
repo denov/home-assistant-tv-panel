@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Build TV Panel, install it on the TV and, optionally, push its Home Assistant address and token.
 #   TV_HOST=<tv ip> ./install.sh [config.json]
+# A first install opens TV Panel's status page (it shows the pairing code); an update doesn't, unless OPEN=1.
 # The ADB tools (tools/tv.py and its venv) come from a TV Panel Launcher checkout next to this one, else a CleanYourTV
 # one; set TV_TOOLS to another tools folder.
 #   # {"url": "http://192.168.1.10:8123", "token": "..."}
@@ -29,6 +30,9 @@ JAVA_HOME="${JAVA_HOME:-$HOME/.local/jdk17}"
 if [ -n "${JAVA_HOME:-}" ]; then export PATH="$JAVA_HOME/bin:$PATH"; fi
 ./gradlew assembleRelease -q --console=plain
 
+# An update leaves the screen alone: opening the status page would pause whatever is playing.
+case "$(tv "pm path $PKG")" in *package:*) UPDATE=1 ;; *) UPDATE=0 ;; esac
+
 "$PY" -I "$TOOLS/b64push.py" app/build/outputs/apk/release/app-release.apk /data/local/tmp/tv-panel.apk
 OUT=$(tv 'pm install -r /data/local/tmp/tv-panel.apk; rm -f /data/local/tmp/tv-panel.apk')
 echo "$OUT"
@@ -51,5 +55,9 @@ if [ -n "$CONFIG" ]; then
     *) echo "$OUT" >&2; echo "ERROR: config write failed (or staged config could not be removed)" >&2; exit 1 ;;
   esac
 fi
-tv "am start -n $PKG/.StatusActivity >/dev/null; echo opened"
-echo "Installed. TV Panel is open on the TV; press Home to see the widget row."
+if [ "$UPDATE" = 1 ] && [ -z "$CONFIG" ] && [ "${OPEN:-0}" != 1 ]; then
+  echo "Updated. Nothing was opened on the TV (OPEN=1 opens TV Panel's status page)."
+else
+  tv "am start -n $PKG/.StatusActivity >/dev/null; echo opened"
+  echo "Installed. TV Panel is open on the TV: it shows the pairing code. Press Home to see the widget row."
+fi

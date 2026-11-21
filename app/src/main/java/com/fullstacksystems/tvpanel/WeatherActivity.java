@@ -95,7 +95,7 @@ public class WeatherActivity extends Activity {
             HaClient ha = new HaClient(c.url, c.token);
             try {
                 String id = entity;
-                if (id == null || !id.startsWith("weather.")) id = firstWeather(ha);
+                if (id == null || !id.startsWith("weather.")) id = firstWeather(ha, c);
                 if (id == null) {
                     post(() -> message("Home Assistant has no weather entity."));
                     return;
@@ -132,17 +132,16 @@ public class WeatherActivity extends Activity {
         }
     }
 
-    private static String firstWeather(HaClient ha) throws Exception {
-        for (Ha.Widget w : WidgetProvider.current()) if (w.key.startsWith("weather.")) return w.key;
+    /** The page was opened without a chip (tv_panel.show, voice): see {@link Ha#pickWeather}. */
+    private static String firstWeather(HaClient ha, Config c) throws Exception {
+        List<String> chips = new ArrayList<>();
+        for (Ha.Widget w : WidgetProvider.current()) chips.add(w.key);
+        // Straight after the app starts, before Home has asked for the chips, the saved settings know them.
+        Settings s = SettingsSource.get(c);
+        if (s.entities != null) chips.addAll(s.entities);
         HaClient.Reply r = ha.get("/api/states");
-        if (!r.ok()) return null;
-        JSONArray all = new JSONArray(r.body);
-        for (int i = 0; i < all.length(); i++) {
-            JSONObject o = all.optJSONObject(i);
-            String id = o == null ? "" : o.optString("entity_id");
-            if (id.startsWith("weather.") && !"unavailable".equals(o.optString("state"))) return id;
-        }
-        return null;
+        if (!r.ok()) return Ha.pickWeather(chips, new JSONArray());
+        return Ha.pickWeather(chips, new JSONArray(r.body));
     }
 
     private void post(Runnable r) {

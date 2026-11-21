@@ -315,6 +315,31 @@ final class Ha {
     }
 
     /** What to show after a press: the integration's message, or "" when there's nothing to say (a page, nothing). */
+    /**
+     * The weather entity a page opened without a chip shows (tv_panel.show, voice): the TV's first weather chip, else
+     * the weather entity that's reporting and has a daily forecast, else one that's reporting, else any that isn't
+     * unavailable. The first in Home Assistant's list wins a tie. Null when there's none.
+     */
+    static String pickWeather(List<String> chips, JSONArray states) {
+        if (chips != null) for (String k : chips) if (k != null && k.startsWith("weather.")) return k;
+        String best = null;
+        int bestScore = -1;
+        for (int i = 0; i < states.length(); i++) {
+            JSONObject o = states.optJSONObject(i);
+            String id = o == null ? "" : o.optString("entity_id");
+            String state = o == null ? "" : o.optString("state");
+            if (!id.startsWith("weather.") || "unavailable".equals(state)) continue;
+            JSONObject a = o.optJSONObject("attributes");
+            boolean daily = a != null && (a.optInt("supported_features") & 1) != 0; // WeatherEntityFeature.FORECAST_DAILY
+            int score = ("unknown".equals(state) || state.isEmpty() ? 0 : 2) + (daily ? 1 : 0);
+            if (score > bestScore) {
+                best = id;
+                bestScore = score;
+            }
+        }
+        return best;
+    }
+
     /** tvpanel://notify?message=...&title=...: a message from Home Assistant's notify entity, shown as a toast. */
     static final String NOTIFY = "notify";
     static final int NOTIFY_MAX = 200;

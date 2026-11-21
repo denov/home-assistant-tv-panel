@@ -132,6 +132,16 @@ const tests = {
     }
     assert.strictEqual(chips.defaultChoice(h, { type: "entity", entity: "cover.front" }), "Default: opens or closes Front (press twice)");
   },
+  "a list shows states in words, as the TV and Home Assistant say them"() {
+    // Weather as the TV's chip says it, not the raw "partlycloudy".
+    assert.strictEqual(chips.stateText(hass, "weather.home"), "Partly cloudy");
+    // Other words in Home Assistant's own translation, when the page has it.
+    const h = { ...hass, formatEntityState: (st) => (st.state === "heat_cool" ? "Heat/Cool" : st.state) };
+    assert.strictEqual(chips.stateText(h, "climate.den"), "Heat/Cool");
+    assert.strictEqual(chips.stateText(hass, "climate.den"), "Heat cool");
+    // Numbers keep the TV's formatting and unit.
+    assert.strictEqual(chips.stateText(h, "sensor.hall_temperature"), "68.4 °F");
+  },
   "each chip says what OK does"() {
     const say = (chip) => chips.describeOk(hass, chip);
     assert.strictEqual(say({ type: "entity", entity: "weather.home" }), "OK opens the weather page");
