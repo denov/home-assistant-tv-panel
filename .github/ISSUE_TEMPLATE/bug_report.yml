@@ -1,0 +1,32 @@
+name: Problem
+description: Something doesn't work, or a chip or page shows the wrong thing
+body:
+  - type: input
+    id: version
+    attributes:
+      label: Integration and app version
+      placeholder: "0.1.0"
+    validations:
+      required: true
+  - type: input
+    id: ha_version
+    attributes:
+      label: Home Assistant version
+      placeholder: "2026.11.0"
+    validations:
+      required: true
+  - type: input
+    id: tv
+    attributes:
+      label: TV
+      description: The model and Android version, and the launcher you use.
+      placeholder: Sony BRAVIA, Google TV / Android 12, CleanYourTV launcher
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: What happens
+      description: What you expected and what you see instead. A photo of the screen helps; blur anything private first.
+    validations:
+      required: true

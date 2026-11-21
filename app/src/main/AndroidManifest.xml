@@ -1,0 +1,96 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <uses-feature android:name="android.software.leanback" android:required="false" />
+    <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
+
+    <!-- Your Home Assistant server, and nothing else. -->
+    <uses-permission android:name="android.permission.INTERNET" />
+
+    <application
+        android:allowBackup="false"
+        android:banner="@drawable/banner"
+        android:icon="@drawable/ic_launcher"
+        android:label="@string/app_name"
+        android:networkSecurityConfig="@xml/network"
+        android:theme="@android:style/Theme.DeviceDefault.NoActionBar">
+
+        <!-- The launcher's widget row reads this provider (see the launcher's Widgets.java). -->
+        <meta-data android:name="com.gathin.tvhome.widgets" android:value="com.fullstacksystems.tvpanel.widgets" />
+
+        <activity
+            android:name=".StatusActivity"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LEANBACK_LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <!-- OK on a chip that has a page: the launcher sends this action with the chip's key, and this routes it to
+             the weather, solar, Apex or camera page. Their own task, so Back always returns to Home rather than to the status page. -->
+        <activity
+            android:name=".OpenActivity"
+            android:exported="true"
+            android:excludeFromRecents="true"
+            android:noHistory="true"
+            android:taskAffinity=""
+            android:theme="@android:style/Theme.NoDisplay">
+            <intent-filter>
+                <action android:name="com.gathin.tvhome.action.OPEN_WIDGET" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+            <!-- tvpanel://weather, tvpanel://solar, tvpanel://apex and tvpanel://cameras[/camera.x], so Home Assistant can open a page by voice
+                 (remote.turn_on on the Android TV Remote integration with activity: tvpanel://weather). -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="tvpanel" />
+            </intent-filter>
+        </activity>
+
+        <activity
+            android:name=".WeatherActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:taskAffinity="" />
+
+        <activity
+            android:name=".ApexActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:taskAffinity="" />
+
+        <activity
+            android:name=".SolarActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:taskAffinity="" />
+
+        <activity
+            android:name=".CameraActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:taskAffinity="" />
+
+        <!-- Opened from the grid (same task, so Back returns to it) or by voice (tvpanel://cameras/camera.x). -->
+        <activity
+            android:name=".CameraViewActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:taskAffinity="" />
+
+        <provider
+            android:name=".WidgetProvider"
+            android:authorities="com.fullstacksystems.tvpanel.widgets"
+            android:exported="true" />
+
+        <!-- install.sh writes the server address and token here with `content write`. Only the ADB shell may. -->
+        <provider
+            android:name=".ConfigProvider"
+            android:authorities="${applicationId}.config"
+            android:exported="true"
+            android:permission="android.permission.WRITE_SECURE_SETTINGS" />
+    </application>
+</manifest>

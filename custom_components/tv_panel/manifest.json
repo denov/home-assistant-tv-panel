@@ -1,0 +1,14 @@
+{
+  "domain": "tv_panel",
+  "name": "TV Panel",
+  "codeowners": ["@denov"],
+  "config_flow": true,
+  "dependencies": ["auth", "http"],
+  "documentation": "https://github.com/denov/home-assistant-tv-panel",
+  "integration_type": "device",
+  "iot_class": "local_push",
+  "issue_tracker": "https://github.com/denov/home-assistant-tv-panel/issues",
+  "requirements": [],
+  "version": "0.1.0",
+  "zeroconf": ["_tvpanel._tcp.local."]
+}

@@ -1,0 +1,13 @@
+{%- set ents = label_entities('tv_widget') -%}
+{%- set row = states('input_boolean.tv_widgets') -%}
+{%- if ents | count == 0 -%}
+No widgets yet. Give an entity the label **tv_widget** to put it on the TV.
+{%- else -%}
+**{{ ents | count }} labelled**{{ ' — row hidden' if row == 'off' else '' }} · max 8
+
+| | Widget | Now | Entity |
+|:-:|---|---|---|
+{% for s in expand(ents) | sort(attribute='name') -%}
+| <ha-icon icon="{{ s.attributes.get('icon') or {'weather': 'mdi:weather-partly-cloudy', 'cover': 'mdi:garage', 'camera': 'mdi:cctv', 'lock': 'mdi:lock'}.get(s.domain, 'mdi:gauge') }}"></ha-icon> | [{{ s.name }}](/tv-widgets/tv?more-info-entity-id={{ s.entity_id }}&more-info-view=settings) | {{ (s.attributes.get('temperature') ~ ' ' ~ s.attributes.get('temperature_unit') ~ ', ' ~ s.state) if s.domain == 'weather' else ('one chip for all cameras' ~ (', motion' if s.state != 'unavailable' and expand(device_entities(device_id(s.entity_id)) if device_id(s.entity_id) else []) | selectattr('domain', 'eq', 'binary_sensor') | selectattr('state', 'eq', 'on') | selectattr('attributes.device_class', 'defined') | selectattr('attributes.device_class', 'eq', 'motion') | list | count > 0 else '')) if s.domain == 'camera' else states(s.entity_id, with_unit=True) }} | `{{ s.entity_id }}` |
+{% endfor %}
+{%- endif %}

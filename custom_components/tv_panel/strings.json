@@ -1,0 +1,35 @@
+{
+  "config": {
+    "flow_title": "{name}",
+    "step": {
+      "user": {
+        "title": "Add a TV",
+        "description": "On the TV, open the TV Panel app. Its page shows the TV's address and a pairing code.",
+        "data": {
+          "host": "TV address"
+        },
+        "data_description": {
+          "host": "As the TV shows it, for example 192.168.1.50:8766"
+        }
+      },
+      "pair": {
+        "title": "Pair {name}",
+        "description": "Enter the six-digit code on the TV's TV Panel page. Keep that page open until pairing finishes.",
+        "data": {
+          "code": "Code"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Can't reach the TV. Check that the TV Panel app is open on it and that the address is right.",
+      "invalid_code": "That code is wrong. Check the code on the TV; after five wrong codes it shows a new one.",
+      "cannot_reach_ha": "The TV can't reach Home Assistant at its local address. Set the local network URL under Settings > System > Network.",
+      "token_refused": "The TV reached Home Assistant, but its new token was refused.",
+      "no_url": "Home Assistant has no local URL to give the TV. Set one under Settings > System > Network."
+    },
+    "abort": {
+      "already_configured": "This TV is already set up.",
+      "cannot_connect": "Can't reach the TV."
+    }
+  }
+}

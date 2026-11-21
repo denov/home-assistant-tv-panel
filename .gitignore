@@ -1,0 +1,25 @@
+# Build output
+build/
+app/build/
+.gradle/
+local.properties
+*.apk
+*.aab
+*.jks
+*.keystore
+
+# Configs hold a Home Assistant token: never commit one
+*.json
+!hacs.json
+!custom_components/**/*.json
+
+# Python
+/.venv/
+/.venv-ha/
+ha/.venv/
+__pycache__/
+.pytest_cache/
+.ruff_cache/
+
+# Local notes
+/private/
