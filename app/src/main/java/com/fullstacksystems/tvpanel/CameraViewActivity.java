@@ -175,7 +175,7 @@ public class CameraViewActivity extends Activity implements SurfaceHolder.Callba
         Config c = Config.load(this);
         if (!c.complete()) return;
         io.execute(() -> {
-            HaClient.Reply r = new HaClient(c.url, c.token).post("/api/template", Cameras.templateBody());
+            HaClient.Reply r = new HaClient(c.url, c.token).post("/api/template", Cameras.templateBody(SettingsSource.get(c)));
             if (!r.ok()) return;
             try {
                 List<Cameras.Cam> got = Cameras.parse(r.body);

@@ -46,16 +46,21 @@ as `homeassistant.local`, the TV uses the address the pairing came from instead.
 
 ## Configure in Home Assistant
 
-| To | Do |
-|---|---|
-| Add a widget | Give the entity the label **tv_widget** (Settings → Entities → the entity → Labels). |
-| Remove one | Remove the label. |
-| Hide the whole row | Create a Toggle helper named **tv_widgets** (`input_boolean.tv_widgets`) and turn it off. |
-| Change a chip's name | Rename the entity. The device name is dropped from the front ("Apex Temp" → "Temp"). |
-| Order the camera grid | Set `input_text.tv_camera_order` to camera names separated by commas (see Cameras below). |
+Open the TV Panel integration and press **Configure**:
 
-A ready-made **TV Widgets** dashboard (the toggle plus a live list of labelled entities) can be created with
-`ha/dashboard.py` (see [Helper scripts](#helper-scripts)).
+| Setting | What it does |
+|---|---|
+| **Chips** | The entities on the TV's home screen, in this order. Cameras become one chip that opens the camera grid, and Apex probes one tank chip, each where its first member is in the list. |
+| **Camera grid order** | Cameras listed here fill the grid first, left to right and top row first. The rest follow by name. |
+| **Solar panel layout** | Optional: where each inverter sits on the roof (see [Solar panel layout](#solar-panel-layout)). |
+
+The TV's device also has a **Widget row** switch: off hides the row. Automations can flip it like any switch.
+Rename an entity to change its chip's name; the device name is dropped from the front ("Apex Temp" → "Temp").
+Changes reach the TV within about 15 seconds.
+
+The first time you open Configure, it starts from the older setup: entities labelled **tv_widget**, and
+`input_text.tv_camera_order`. The switch starts from `input_boolean.tv_widgets`. Until Configure is saved, the app
+keeps using those, and it uses them too on a TV set up without the integration (see [Helper scripts](#helper-scripts)).
 
 The **Solar** chip (an Enphase Envoy power sensor) opens a solar page:
 - **Now:** grid, solar, battery and home, each with today's kWh.
@@ -87,8 +92,8 @@ IDs separated by commas, for example `Front Door, Driveway, Back Yard`, filled l
 Cameras it doesn't list follow by name, and without the helper they all go by name. `ha/dashboard.py` creates it and
 puts it on the TV Widgets dashboard. "Camera - " is dropped from the front of names.
 
-The panel layout goes in `config.json` under `"solar"` (see [Solar panel layout](#solar-panel-layout)). Without
-one, the panels are shown in rows.
+The panel layout is set in Configure (see [Solar panel layout](#solar-panel-layout)). Without one, the panels are
+shown in rows.
 
 Order: weather first, then cameras, covers and locks, then everything else grouped by device and sorted by name. At most 8 chips;
 the row shrinks to fit the screen. Weather chips open the weather page (now, next 12 hours, 5 days) from the
@@ -123,14 +128,22 @@ The app only fetches while the launcher asks, at most every 12 s, and has no bac
 
 ## Solar panel layout
 
-`config.json` can carry `"solar": {"arrays": [{"name": "Array 1", "panels": [{"id": "<inverter serial>", "x": 0, "y": 0, "w": 2, "h": 1}, ...]}]}`.
+Paste it into **Configure** → **Solar panel layout**, as YAML or JSON:
+
+```yaml
+arrays:
+  - name: Array 1
+    panels:
+      - {id: "<inverter serial>", x: 0, y: 0, w: 2, h: 1}
+```
+
 Positions are in grid units: portrait is `w 1, h 2` (the default) and landscape is `w 2, h 1`. Arrays without
-`x`/`y` sit left to right with their tops aligned. Inverters that aren't listed go in an "Other" group. This is moving
-into Home Assistant.
+`x`/`y` sit left to right with their tops aligned. Inverters that aren't listed go in an "Other" group. A layout in a
+pushed `config.json` (`"solar": {...}`) is used when Configure has none.
 
 ## Helper scripts
 
-`ha/` has small scripts that use Home Assistant's websocket API:
+For a setup without the integration, `ha/` has small scripts that use Home Assistant's websocket API:
 
 ```bash
 python3 -m venv ha/.venv && ha/.venv/bin/pip install -r ha/requirements.txt

@@ -105,4 +105,24 @@ public class HaTest {
         assertEquals("Alarm\tAlkalinity\tpH\tSalinity\tTemp", w.get(0).label);
         assertEquals("2 alerts\t9.53 dKH\t8.23\t34.9 ppt\t78.8 °F", w.get(0).value);
     }
+
+    @Test
+    public void aListFromTheIntegrationKeepsItsOrder() throws Exception {
+        // The template answers in the integration's order and says so ("ordered"); merged chips sit where their
+        // first member was.
+        String reply = "{\"on\": \"on\", \"ordered\": true, \"items\": ["
+                + "{\"id\": \"sensor.solar_production\", \"name\": \"Solar\", \"state\": \"1.2\", \"unit\": \"kW\", \"dc\": \"power\"},"
+                + "{\"id\": \"camera.b\", \"name\": \"B\", \"state\": \"idle\"},"
+                + "{\"id\": \"sensor.apex_ph\", \"name\": \"Apex pH\", \"device\": \"Apex\", \"state\": \"8.2\", \"apex\": \"pH\"},"
+                + "{\"id\": \"weather.home\", \"name\": \"Home\", \"state\": \"sunny\", \"temp\": 60},"
+                + "{\"id\": \"camera.a\", \"name\": \"A\", \"state\": \"idle\"},"
+                + "{\"id\": \"sensor.apex_temp\", \"name\": \"Apex Temp\", \"device\": \"Apex\", \"state\": \"78\", \"unit\": \"°F\", \"apex\": \"Temp\"}"
+                + "]}";
+        List<Ha.Widget> w = Ha.parseWidgets(reply);
+        assertEquals(4, w.size());
+        assertEquals("sensor.solar_production", w.get(0).key);
+        assertEquals(Ha.CAMERAS, w.get(1).key);
+        assertEquals(Ha.APEX, w.get(2).key);
+        assertEquals("weather.home", w.get(3).key);
+    }
 }

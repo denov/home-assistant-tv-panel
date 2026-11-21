@@ -110,7 +110,7 @@ public class CameraActivity extends Activity {
             return;
         }
         io.execute(() -> {
-            HaClient.Reply r = new HaClient(c.url, c.token).post("/api/template", Cameras.templateBody());
+            HaClient.Reply r = new HaClient(c.url, c.token).post("/api/template", Cameras.templateBody(SettingsSource.get(c)));
             if (!r.ok()) {
                 String why = r.code == 401 ? "Home Assistant refused the token (401)."
                         : r.code == 0 ? "Home Assistant did not answer." : "Home Assistant answered " + r.code + ".";

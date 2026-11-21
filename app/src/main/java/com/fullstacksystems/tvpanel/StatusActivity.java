@@ -82,8 +82,8 @@ public class StatusActivity extends Activity {
         }
         line(" ", 12, 0);
         line(paired ? "To pair with another Home Assistant, or again: add the TV Panel integration there and enter"
-                : "To set up: in Home Assistant, open Settings > Devices & services. Add the TV Panel integration (or"
-                        + " press Configure on the discovered TV) and enter this code:", 18, 0xCCFFFFFF);
+                : "To set up: in Home Assistant, open Settings > Devices & services, add the TV Panel integration,"
+                        + " type this TV's address (below) and enter this code:", 18, 0xCCFFFFFF);
         codeView = new TextView(this);
         codeView.setText(spaced(code));
         codeView.setTextSize(TypedValue.COMPLEX_UNIT_SP, paired ? 30 : 56);
@@ -120,8 +120,8 @@ public class StatusActivity extends Activity {
                     for (Ha.Widget w : got) chip(w);
                 }
                 line(" ", 12, 0);
-                line("To choose widgets: in Home Assistant, give an entity the label “" + Ha.LABEL + "”.", 18, 0xCCFFFFFF);
-                line("To hide the whole row: create a toggle helper named “tv_widgets” and turn it off.", 18, 0xCCFFFFFF);
+                line("To choose and order the widgets: in Home Assistant, open the TV Panel integration and press Configure.", 18, 0xCCFFFFFF);
+                line("To hide the whole row: turn off this TV’s “Widget row” switch in Home Assistant.", 18, 0xCCFFFFFF);
                 line("Chips show the entity’s name without its device name; rename the entity in Home Assistant to change it.", 18, 0xCCFFFFFF);
             });
         });

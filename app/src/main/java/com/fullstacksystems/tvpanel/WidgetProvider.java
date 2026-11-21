@@ -141,7 +141,7 @@ public class WidgetProvider extends ContentProvider {
             lastError = "No Home Assistant address and token yet.";
             return Collections.emptyList();
         }
-        HaClient.Reply r = new HaClient(c.url, c.token).post("/api/template", Ha.templateBody());
+        HaClient.Reply r = new HaClient(c.url, c.token).post("/api/template", Ha.templateBody(SettingsSource.get(c)));
         if (!r.ok()) {
             lastError = r.code == 401 ? "Home Assistant refused the token (401)."
                     : r.code == 0 ? "Home Assistant did not answer at " + c.url + "."

@@ -1,22 +1,47 @@
 """TV Panel: Home Assistant on an Android TV's home screen, with pages for weather, solar, a reef tank and cameras.
 
-This first version pairs the TV: it gives the TV app its own Home Assistant user and token, so nobody has to paste a
-token over ADB. Removing the integration deletes that user, which signs the TV out.
+The integration pairs the TV (its own local-only user and token), holds the TV's settings (Configure: the chips, the
+camera grid's order, the solar layout) and a switch for the widget row. The TV reads them from /api/tv_panel/config.
+Removing the integration deletes the TV's user, which signs the TV out.
 """
 
 from __future__ import annotations
 
+from dataclasses import dataclass
+
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import CONF_NAME
+from homeassistant.const import CONF_NAME, Platform
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers import device_registry as dr
+from homeassistant.helpers import config_validation as cv, device_registry as dr
+from homeassistant.helpers.typing import ConfigType
 
 from .const import CONF_TV_ID, CONF_USER_ID, DOMAIN
 from .pairing import async_remove_user
+from .view import TvPanelConfigView
+
+PLATFORMS = [Platform.SWITCH]
+CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 
 
-async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-    """Show the TV as a device."""
+@dataclass
+class TvPanelData:
+    """What the TV reads besides the options: whether the widget row is on (the switch keeps it here)."""
+
+    row: bool = True
+
+
+type TvPanelConfigEntry = ConfigEntry[TvPanelData]
+
+
+async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
+    """The settings endpoint serves every TV, each with its own token."""
+    hass.http.register_view(TvPanelConfigView())
+    return True
+
+
+async def async_setup_entry(hass: HomeAssistant, entry: TvPanelConfigEntry) -> bool:
+    """Show the TV as a device, with its widget row switch."""
+    entry.runtime_data = TvPanelData()
     dr.async_get(hass).async_get_or_create(
         config_entry_id=entry.entry_id,
         identifiers={(DOMAIN, entry.data[CONF_TV_ID])},
@@ -24,12 +49,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         manufacturer="TV Panel",
         model=entry.data.get(CONF_NAME),
     )
+    await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     return True
 
 
-async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-    """Nothing runs yet, so there is nothing to stop."""
-    return True
+async def async_unload_entry(hass: HomeAssistant, entry: TvPanelConfigEntry) -> bool:
+    """Stop the switch."""
+    return await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
 
 
 async def async_remove_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:

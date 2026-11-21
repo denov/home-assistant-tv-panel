@@ -117,6 +117,9 @@ public class SolarActivity extends Activity {
         }
     }
 
+    /** The panel layout: the integration's, else the pushed one. Read once, on the io thread. */
+    private volatile String layout;
+
     // ---- loading -----------------------------------------------------------------------------------------------
 
     private void loadLive() {
@@ -124,12 +127,13 @@ public class SolarActivity extends Activity {
         main.postDelayed(liveTick, LIVE_MS);
         Config c = Config.load(this);
         if (!c.complete()) {
-            showMessage("No Home Assistant address and token yet. Run install.sh with a config file.");
+            showMessage("Not paired with Home Assistant yet. Open TV Panel from the app grid to pair.");
             return;
         }
         io.execute(() -> {
             HaClient ha = new HaClient(c.url, c.token);
             if (zone == null) zone = haZone(ha);
+            if (layout == null) layout = SettingsSource.get(c).solarLayout(Config.solarLayout(this));
             HaClient.Reply r = ha.post("/api/template", Solar.templateBody());
             if (!r.ok()) {
                 String why = r.code == 401 ? "Home Assistant refused the token (401)."
@@ -251,7 +255,7 @@ public class SolarActivity extends Activity {
         message.setVisibility(View.GONE);
         page.setVisibility(View.VISIBLE);
         if (!layoutSet) {
-            panels.setLayout(Solar.layout(Config.solarLayout(this), l.inverters.keySet()));
+            panels.setLayout(Solar.layout(layout == null ? Config.solarLayout(this) : layout, l.inverters.keySet()));
             layoutSet = true;
         }
         if (!userPickedMode) panels.setShowToday(Double.isNaN(l.productionW) || l.productionW < 20);

@@ -4,12 +4,13 @@ from __future__ import annotations
 
 from typing import Any
 
-from homeassistant.config_entries import ConfigFlow, ConfigFlowResult
+from homeassistant.config_entries import ConfigEntry, ConfigFlow, ConfigFlowResult, OptionsFlow
 from homeassistant.const import CONF_HOST, CONF_NAME, CONF_PORT
 from homeassistant.helpers.service_info.zeroconf import ZeroconfServiceInfo
 import voluptuous as vol
 
 from .const import CONF_TV_ID, CONF_USER_ID, DEFAULT_PORT, DOMAIN
+from .options import TvPanelOptionsFlow
 from .pairing import PairError, async_info, async_pair
 
 CONF_CODE = "code"
@@ -19,6 +20,11 @@ class TvPanelConfigFlow(ConfigFlow, domain=DOMAIN):
     """One entry per TV, keyed by the id the app makes for itself."""
 
     VERSION = 1
+
+    @staticmethod
+    def async_get_options_flow(config_entry: ConfigEntry) -> OptionsFlow:
+        """Configure: the chips, the camera grid's order and the solar layout."""
+        return TvPanelOptionsFlow()
 
     def __init__(self) -> None:
         self._host = ""

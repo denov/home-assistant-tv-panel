@@ -43,6 +43,7 @@ final class Config {
     static void save(Context c, String url, String token) {
         prefs(c).edit().putString("url", normalizeUrl(url)).putString("token", token.trim()).apply();
         WidgetProvider.invalidate();
+        SettingsSource.invalidate();
     }
 
     /** The owner's panel layout for the solar page (config.json's "solar"), or "" for rows of panels. */

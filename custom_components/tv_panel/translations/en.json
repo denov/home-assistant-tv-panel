@@ -31,5 +31,30 @@
       "already_configured": "This TV is already set up.",
       "cannot_connect": "Can't reach the TV."
     }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "TV Panel settings",
+        "description": "What the TV shows. Changes reach the TV within about 15 seconds.",
+        "data": {
+          "entities": "Chips",
+          "camera_order": "Camera grid order",
+          "solar": "Solar panel layout"
+        },
+        "data_description": {
+          "entities": "Shown in this order on the TV's home screen. Cameras become one chip that opens the camera grid; Apex probes become one tank chip.",
+          "camera_order": "Cameras listed here fill the grid first, left to right, top row first. The rest follow by name.",
+          "solar": "Optional. Where each inverter sits on your roof, for the solar page: {\"arrays\": [{\"name\": \"Array 1\", \"panels\": [{\"id\": \"<inverter serial>\", \"x\": 0, \"y\": 0, \"w\": 2, \"h\": 1}]}]}"
+        }
+      }
+    }
+  },
+  "entity": {
+    "switch": {
+      "widget_row": {
+        "name": "Widget row"
+      }
+    }
   }
 }

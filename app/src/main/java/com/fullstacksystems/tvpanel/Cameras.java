@@ -31,21 +31,24 @@ final class Cameras {
             + " | selectattr('state', 'eq', 'on') | list | count) if e.startswith('camera.') and device_id(e) else 0)";
 
     static final String TEMPLATE = "{% set ns = namespace(out=[]) %}"
-            + "{% for e in label_entities('" + Ha.LABEL + "') | select('match', 'camera[.]') %}"
+            + "{% for e in (entities if entities is defined else label_entities('" + Ha.LABEL + "'))"
+            + " | select('match', 'camera[.]') %}"
             + "{% set ns.out = ns.out + [{'id': e, 'name': state_attr(e, 'friendly_name'), 'state': states(e),"
             + " 'motion': " + MOTION + " > 0}] %}"
             + "{% endfor %}"
-            + "{{ {'items': ns.out, 'order': states('" + ORDER + "')} | tojson }}";
+            + "{{ {'items': ns.out, 'order': (camera_order if camera_order is defined else states('" + ORDER + "'))}"
+            + " | tojson }}";
 
     private Cameras() {
     }
 
     static String templateBody() {
-        try {
-            return new JSONObject().put("template", TEMPLATE).toString();
-        } catch (JSONException e) {
-            throw new IllegalStateException(e);
-        }
+        return templateBody(Settings.NONE);
+    }
+
+    /** With the integration's settings: its chips (the cameras among them) and the grid's order. */
+    static String templateBody(Settings settings) {
+        return Settings.body(TEMPLATE, settings, true);
     }
 
     static final class Cam {

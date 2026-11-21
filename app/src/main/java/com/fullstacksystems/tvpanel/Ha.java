@@ -23,10 +23,12 @@ final class Ha {
 
     /** One request returns the switch and every labelled entity with what the chip needs. */
     static final String TEMPLATE = "{% set ns = namespace(out=[]) %}"
-            + "{% for e in label_entities('" + LABEL + "') %}"
+            // The integration's list (in its order) when it sends one, else the tv_widget label.
+            + "{% for e in (entities if entities is defined else label_entities('" + LABEL + "')) %}"
             + "{% set ns.out = ns.out + [{"
             + "'id': e, 'name': state_attr(e, 'friendly_name'), "
-            + "'device': device_attr(device_id(e), 'name_by_user') or device_attr(device_id(e), 'name'), "
+            + "'device': ((device_attr(device_id(e), 'name_by_user') or device_attr(device_id(e), 'name'))"
+            + " if device_id(e) else none), "
             + "'state': states(e), 'unit': state_attr(e, 'unit_of_measurement'), 'icon': state_attr(e, 'icon'), "
             + "'dc': state_attr(e, 'device_class'), 'temp': state_attr(e, 'temperature'), "
             + "'tunit': state_attr(e, 'temperature_unit'), 'apex': state_attr(e, 'apex_probe_type'), "
@@ -34,7 +36,8 @@ final class Ha {
             + "{% endfor %}"
             // The Apex controller's alarm (binary_sensor.*apex_alarm, unlabelled): it colours the tank chip.
             + "{% set al = states.binary_sensor | selectattr('entity_id', 'search', 'apex_alarm$') | list %}"
-            + "{{ {'on': states('" + SWITCH + "'), 'items': ns.out,"
+            + "{{ {'on': (('on' if row else 'off') if row is defined else states('" + SWITCH + "')),"
+            + " 'ordered': entities is defined, 'items': ns.out,"
             + " 'alarm': al[0].state if al else '',"
             + " 'alerts': ((al[0].attributes.get('active_alerts') or []) | count) if al else 0} | tojson }}";
 
@@ -82,14 +85,18 @@ final class Ha {
     }
 
     static String templateBody() {
-        try {
-            return new JSONObject().put("template", TEMPLATE).toString();
-        } catch (JSONException e) {
-            throw new IllegalStateException(e);
-        }
+        return templateBody(Settings.NONE);
     }
 
-    /** The template's answer as chips: none when the switch is off. Weather first, then by device, then by name. */
+    /** With the integration's settings: its chips and row switch, passed as template variables. */
+    static String templateBody(Settings settings) {
+        return Settings.body(TEMPLATE, settings, false);
+    }
+
+    /**
+     * The template's answer as chips: none when the switch is off. In the integration's order when it gave the list;
+     * from labels, weather first, then by device, then by name.
+     */
     static List<Widget> parseWidgets(String json) throws JSONException {
         JSONObject o = new JSONObject(json);
         if ("off".equals(o.optString("on"))) return Collections.emptyList();
@@ -104,7 +111,8 @@ final class Ha {
         }
         mergeCameras(out);
         mergeApex(out, "on".equals(o.optString("alarm")), o.optInt("alerts", 0));
-        out.sort((a, b) -> {
+        // The integration's list is in the order the person chose; the labels have none, so sort those.
+        if (!o.optBoolean("ordered")) out.sort((a, b) -> {
             int g = a.sortGroup.compareToIgnoreCase(b.sortGroup);
             return g != 0 ? g : a.label.compareToIgnoreCase(b.label);
         });
@@ -117,15 +125,18 @@ final class Ha {
      */
     static void mergeCameras(List<Widget> chips) {
         boolean any = false, motion = false;
+        int at = -1;
         for (int i = chips.size() - 1; i >= 0; i--) {
             Widget w = chips.get(i);
             if (!CAMERAS.equals(w.page)) continue;
             any = true;
             motion |= "motion_sensor".equals(w.icon);
             chips.remove(i);
+            at = i;
         }
         if (any) {
-            chips.add(new Widget(CAMERAS, "Cameras", "", motion ? "motion_sensor" : "cctv", motion ? ORANGE : BLUE,
+            // Where the first camera was, which matters when the integration sets the order.
+            chips.add(at, new Widget(CAMERAS, "Cameras", "", motion ? "motion_sensor" : "cctv", motion ? ORANGE : BLUE,
                     CAMERAS, "1"));
         }
     }
