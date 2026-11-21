@@ -1,0 +1,26 @@
+show:
+  fields:
+    page:
+      required: true
+      selector:
+        select:
+          translation_key: page
+          options:
+            - weather
+            - solar
+            - tank
+            - cameras
+            - camera
+    camera:
+      selector:
+        entity:
+          domain: camera
+    wake:
+      default: false
+      selector:
+        boolean:
+    device_id:
+      selector:
+        device:
+          integration: tv_panel
+          multiple: true

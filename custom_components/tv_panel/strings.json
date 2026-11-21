@@ -48,5 +48,40 @@
         "name": "Widget row"
       }
     }
+  },
+  "services": {
+    "show": {
+      "name": "Show a page",
+      "description": "Opens a TV Panel page, or one camera full screen, on the TV. It goes through the Android TV Remote integration for the same TV.",
+      "fields": {
+        "page": {
+          "name": "Page",
+          "description": "The page to open."
+        },
+        "camera": {
+          "name": "Camera",
+          "description": "For one camera: the camera to show full screen."
+        },
+        "wake": {
+          "name": "Turn the TV on",
+          "description": "Turn the TV on if it's off. Otherwise a TV that's off stays off."
+        },
+        "device_id": {
+          "name": "TV",
+          "description": "The TVs to show it on. Leave empty for every TV."
+        }
+      }
+    }
+  },
+  "selector": {
+    "page": {
+      "options": {
+        "weather": "Weather",
+        "solar": "Solar",
+        "tank": "Tank",
+        "cameras": "Camera grid",
+        "camera": "One camera"
+      }
+    }
   }
 }

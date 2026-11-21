@@ -5,7 +5,8 @@ Brought to you by [Fullstack Systems](https://fullstacksystems.com).
 <a href="https://www.buymeacoffee.com/denov" target="_blank" rel="noreferrer noopener"><img src="https://img.buymeacoffee.com/button-api/?text=Buy%20me%20a%20coffee&emoji=&slug=denov&button_colour=FFDD00&font_colour=000000&font_family=Bree&outline_colour=000000&coffee_colour=ffffff" alt="Buy me a coffee" height="40"></a>
 
 Home Assistant on an Android TV's home screen: a row of live chips under the clock (weather, cameras, garage door, a
-reef tank, solar), and full pages for weather, solar, the tank and cameras that you can also open by voice.
+reef tank, solar), full pages for weather, solar, the tank and cameras that automations and voice can open, and
+messages from Home Assistant on the screen.
 
 The reef tank chip and page are made for our [Neptune Apex integration](https://github.com/denov/home-assistant-apex-neptune): with it installed, the tank's
 probes, Trident results, dosing and alarm show up on the TV with nothing to set up, and its feed buttons can be
@@ -104,7 +105,7 @@ For example, with the [Neptune Apex integration](https://github.com/denov/home-a
 **Perform an action**, `button.press` with the target `button.apex_feed_a` (your Feed A button), and tick **Press OK
 twice**, since a feed cycle may run an auto feeder. One OK on the TV asks; the second starts Feed A, and the TV says so.
 The chip still shows the readings, and the tank page still opens
-[by voice](#open-a-page-by-voice-home-assistant-assist).
+[by voice](#by-voice-assist).
 
 Every press also fires the event `tv_panel_chip_pressed`, with `chip` (the entity id, or `cameras` / `apex` for the
 groups), `tv`, `entry_id` and `action`, so an automation can act on any chip, even one set to do nothing:
@@ -219,33 +220,68 @@ missing. It overwrites the `tv-widgets` dashboard.
 
 Icons: [Material Design Icons](https://pictogrammers.com/library/mdi/) (Pictogrammers Free License).
 
-## Open a page by voice (Home Assistant Assist)
+## Open a page from Home Assistant
 
-TV Panel answers the deep links `tvpanel://weather`, `tvpanel://solar`, `tvpanel://apex`, `tvpanel://cameras`
-(the grid) and `tvpanel://cameras/<camera entity id>` (one camera, full screen). With HA's **Android TV Remote**
-integration, a script opens them (it also wakes the TV):
+`tv_panel.show` opens a page on the TV from any automation or script: `weather`, `solar`, `tank`, `cameras` (the
+grid) or `camera` (one camera full screen, with `camera`). For example, show the front door when the doorbell rings:
+
+```yaml
+triggers:
+  - trigger: state
+    entity_id: binary_sensor.doorbell
+    to: "on"
+actions:
+  - action: tv_panel.show
+    data:
+      page: camera
+      camera: camera.front_door
+```
+
+A TV that's off stays off, unless you add `wake: true`. If the screensaver is showing, it's closed so the page can be
+seen. With more than one TV, pick them with `device_id`; without it, every TV shows the page.
+
+It goes through Home Assistant's **Android TV Remote** integration, set up for the same TV (the address you paired
+TV Panel with), so add that first.
+
+### By voice (Assist)
+
+Make a script that calls `tv_panel.show`, expose it to Assist, and give it aliases such as "show weather" (Settings >
+Voice assistants > Expose):
 
 ```yaml
 alias: TV Weather
 sequence:
-  - action: remote.turn_on
-    target:
-      entity_id: remote.living_room_tv
+  - action: tv_panel.show
     data:
-      activity: tvpanel://weather
-  # If the screensaver is showing, the page opens behind it. Any ordinary key closes it
-  # (WAKEUP doesn't), and TV Panel's pages ignore MENU.
-  - delay: "00:00:01"
-  - action: remote.send_command
-    target:
-      entity_id: remote.living_room_tv
-    data:
-      command: MENU
+      page: weather
+      wake: true
 ```
 
-Expose the script to Assist and give it aliases such as "show weather" (Settings > Voice assistants > Expose).
 Saying the alias runs it. An alias has to be said word for word. For looser wording, such as "show me the weather
-forecast", add an automation with a sentence trigger, `show [me] [the] weather [forecast]`, that runs the script. A new command replaces the page already showing, and Back returns to what was there before.
+forecast", add an automation with a sentence trigger, `show [me] [the] weather [forecast]`, that runs the script. A
+new command replaces the page already showing, and Back returns to what was there before.
+
+The pages are also deep links (`tvpanel://weather`, `tvpanel://solar`, `tvpanel://apex`, `tvpanel://cameras` and
+`tvpanel://cameras/<camera entity id>`), which `remote.turn_on` on the Android TV Remote entity opens with
+`activity: tvpanel://weather`.
+
+## Messages on the TV
+
+Each TV has a notify entity, named after the TV. `notify.send_message` shows its message on the TV, over whatever is
+playing, for a few seconds:
+
+```yaml
+actions:
+  - action: notify.send_message
+    target:
+      entity_id: notify.living_room_tv
+    data:
+      title: Garage
+      message: The door has been open for 20 minutes
+```
+
+The TV shows "Garage: The door has been open for 20 minutes". A TV that's off isn't turned on, and the message is
+dropped. Like `tv_panel.show`, it needs the Android TV Remote integration for the same TV.
 
 ## License
 

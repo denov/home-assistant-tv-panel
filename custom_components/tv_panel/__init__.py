@@ -1,8 +1,9 @@
 """TV Panel: Home Assistant on an Android TV's home screen, with pages for weather, solar, a reef tank and cameras.
 
 The integration pairs the TV (its own local-only user and token), holds the TV's settings and a switch for the widget
-row. The settings (the chips, the cameras, the tank, the solar layout) are edited on the TV Panel page in the sidebar,
-and the TV reads them from /api/tv_panel/config.
+row. tv_panel.show opens a page on the TV and its notify entity shows messages, both through the Android TV Remote
+integration for the same TV. The settings (the chips, the cameras, the tank, the solar layout) are edited on the TV
+Panel page in the sidebar, and the TV reads them from /api/tv_panel/config.
 Removing the integration deletes the TV's user, which signs the TV out.
 """
 
@@ -20,10 +21,11 @@ from .const import CONF_TV_ID, CONF_USER_ID, DOMAIN
 from .pairing import async_remove_user
 from .panel import async_register as async_register_panel
 from .press import TvPanelPressView
+from .services import async_register as async_register_services
 from .view import TvPanelConfigView
 from .websocket import async_register as async_register_websocket
 
-PLATFORMS = [Platform.SWITCH]
+PLATFORMS = [Platform.NOTIFY, Platform.SWITCH]
 CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 
 
@@ -38,16 +40,17 @@ type TvPanelConfigEntry = ConfigEntry[TvPanelData]
 
 
 async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
-    """The TV's settings endpoint (each TV with its own token), and the page that edits the settings."""
+    """The TV's settings endpoint (each TV with its own token), the page that edits the settings, and tv_panel.show."""
     hass.http.register_view(TvPanelConfigView())
     hass.http.register_view(TvPanelPressView())
     async_register_websocket(hass)
+    async_register_services(hass)
     await async_register_panel(hass)
     return True
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: TvPanelConfigEntry) -> bool:
-    """Show the TV as a device, with its widget row switch."""
+    """Show the TV as a device, with its widget row switch and notify entity."""
     entry.runtime_data = TvPanelData()
     dr.async_get(hass).async_get_or_create(
         config_entry_id=entry.entry_id,
@@ -61,7 +64,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: TvPanelConfigEntry) -> b
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: TvPanelConfigEntry) -> bool:
-    """Stop the switch."""
+    """Stop the switch and the notify entity."""
     return await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
 
 

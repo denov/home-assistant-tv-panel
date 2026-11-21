@@ -10,8 +10,9 @@ import java.util.List;
 
 /**
  * The launcher's OK on a chip lands here (com.gathin.tvhome.action.OPEN_WIDGET with the chip's key) and goes on to
- * that chip's page. It also takes tvpanel://weather, tvpanel://solar, tvpanel://apex and tvpanel://cameras[/camera.x], which Home Assistant sends to open a
- * page by voice. One entry point, so the launcher never sees a chooser. No window of its own.
+ * that chip's page. It also takes tvpanel://weather, tvpanel://solar, tvpanel://apex and tvpanel://cameras[/camera.x],
+ * which Home Assistant sends to open a page (tv_panel.show, or by voice), and tvpanel://notify?message=...&title=...,
+ * a message from the TV's notify entity. One entry point, so the launcher never sees a chooser. No window of its own.
  */
 public class OpenActivity extends Activity {
     @Override
@@ -20,6 +21,16 @@ public class OpenActivity extends Activity {
         Class<?> page = null;
         String key = null;
         Uri link = getIntent().getData();
+        if (link != null && "tvpanel".equals(link.getScheme()) && Ha.NOTIFY.equals(link.getHost())) {
+            // A message from Home Assistant: a toast over whatever is on screen, which keeps playing. No page opens
+            // or closes.
+            String text = Ha.notifyText(link.getQueryParameter("title"), link.getQueryParameter("message"));
+            if (!text.isEmpty()) {
+                android.widget.Toast.makeText(getApplicationContext(), text, android.widget.Toast.LENGTH_LONG).show();
+            }
+            finish();
+            return;
+        }
         if (link != null && "tvpanel".equals(link.getScheme())) {
             // A deep link (from Home Assistant, by voice) names the page, not an entity. Each page finds its own.
             String host = link.getHost();

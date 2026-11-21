@@ -10,7 +10,8 @@ from .common import paired_tv
 async def test_on_by_default_and_on_the_tv(hass: HomeAssistant) -> None:
     entry, _ = await paired_tv(hass)
     entities = er.async_entries_for_config_entry(er.async_get(hass), entry.entry_id)
-    assert [e.domain for e in entities] == ["switch"]
+    entities = [e for e in entities if e.domain == "switch"]
+    assert len(entities) == 1
     assert hass.states.get(entities[0].entity_id).state == "on"
     device = dr.async_get(hass).async_get(entities[0].device_id)
     assert device.name == "BRAVIA"
@@ -19,7 +20,8 @@ async def test_on_by_default_and_on_the_tv(hass: HomeAssistant) -> None:
 async def test_starts_from_the_old_helper(hass: HomeAssistant) -> None:
     hass.states.async_set("input_boolean.tv_widgets", "off")
     entry, _ = await paired_tv(hass)
-    switch = er.async_entries_for_config_entry(er.async_get(hass), entry.entry_id)[0].entity_id
+    entities = er.async_entries_for_config_entry(er.async_get(hass), entry.entry_id)
+    switch = next(e.entity_id for e in entities if e.domain == "switch")
     assert hass.states.get(switch).state == "off"
 
 

@@ -43,8 +43,9 @@
                 <action android:name="com.gathin.tvhome.action.OPEN_WIDGET" />
                 <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>
-            <!-- tvpanel://weather, tvpanel://solar, tvpanel://apex and tvpanel://cameras[/camera.x], so Home Assistant can open a page by voice
-                 (remote.turn_on on the Android TV Remote integration with activity: tvpanel://weather). -->
+            <!-- tvpanel://weather, tvpanel://solar, tvpanel://apex and tvpanel://cameras[/camera.x], so Home Assistant can open a page
+                 (tv_panel.show, or remote.turn_on on the Android TV Remote integration with activity: tvpanel://weather), and
+                 tvpanel://notify?message=...&title=... for the TV's notify entity. -->
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />

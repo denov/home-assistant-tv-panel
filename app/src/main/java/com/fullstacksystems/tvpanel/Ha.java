@@ -315,6 +315,18 @@ final class Ha {
     }
 
     /** What to show after a press: the integration's message, or "" when there's nothing to say (a page, nothing). */
+    /** tvpanel://notify?message=...&title=...: a message from Home Assistant's notify entity, shown as a toast. */
+    static final String NOTIFY = "notify";
+    static final int NOTIFY_MAX = 200;
+
+    /** "Garage: Left open", like the press toasts ("Garage Door: opening"); cut to {@link #NOTIFY_MAX}. */
+    static String notifyText(String title, String message) {
+        String t = title == null ? "" : title.trim();
+        String m = message == null ? "" : message.trim();
+        String text = t.isEmpty() ? m : m.isEmpty() ? t : t + ": " + m;
+        return text.length() <= NOTIFY_MAX ? text : text.substring(0, NOTIFY_MAX - 1) + "…";
+    }
+
     static String pressMessage(String json) {
         try {
             return new JSONObject(json).optString("message", "");
