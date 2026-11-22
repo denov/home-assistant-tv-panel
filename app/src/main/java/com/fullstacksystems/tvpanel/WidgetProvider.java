@@ -86,7 +86,8 @@ public class WidgetProvider extends ContentProvider {
         post(ctx, Ha.pressBody(key), true);
     }
 
-    /** OK on a chip that opened a page ("page") or does nothing ("none"): only the integration's event. */
+    /** OK on a chip that opened a screen or does nothing ({@link Ha#OPENED_SCREEN}, {@link Ha#DID_NOTHING}): only the
+     * integration's event. */
     static void event(Context ctx, String key, String action) {
         post(ctx, Ha.pressBody(key, action), false);
     }

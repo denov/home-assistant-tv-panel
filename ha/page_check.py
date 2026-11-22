@@ -8,7 +8,9 @@ CHROME to use another binary than google-chrome.
 
 It exists because the page once rendered only when opened from the sidebar: Home Assistant set its properties before
 the element was defined, and a refresh showed nothing. It also fails when the preview of the TV's row scrolls, is
-clipped after a state change redraws it, or scrolls out of view.
+clipped after a state change redraws it, or scrolls out of view, and when adding a screen, removing it, or saving a
+chip that opens a removed screen doesn't do what it should. Nothing is saved: the one save it tries should be refused,
+and if it isn't, the settings it read first are saved back (and the check fails).
 """
 
 from __future__ import annotations
@@ -76,6 +78,47 @@ LIVE = """(async () => {
   const tv = root.querySelector('.tv').getBoundingClientRect();
   return JSON.stringify({clipped, scrolled: Math.round(window.scrollY || document.scrollingElement.scrollTop),
     tvTop: Math.round(tv.top), tvBottom: Math.round(tv.bottom), height: innerHeight});
+})()"""
+
+
+# Add a thermostat screen, remove it, and try to save a chip set to open a screen that isn't there: Home Assistant
+# refuses, naming the chip. Then the settings are loaded again, as Undo does.
+SCREENS = """(async () => {
+  const walk = (root) => { for (const el of root.querySelectorAll('*')) {
+    if (el.localName === 'tv-panel-settings') return el;
+    if (el.shadowRoot) { const f = walk(el.shadowRoot); if (f) return f; } } return null; };
+  const el = walk(document);
+  if (!el || !el.s) return JSON.stringify({});
+  const root = el.shadowRoot;
+  const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+  const tabs = () => [...root.querySelectorAll('[role=tab]')].map((t) => t.textContent.trim());
+  const before = tabs();
+  const pick = root.querySelector('[data-action=add-screen]');
+  pick.value = 'thermostat';
+  pick.dispatchEvent(new Event('change', {bubbles: true}));
+  await wait(300);
+  const added = tabs();
+  const selected = root.querySelector('[role=tab][aria-selected=true]')?.textContent.trim();
+  const search = !!root.querySelector('[data-list$=".climates"][data-action=search]');
+  root.querySelector('[data-action=remove-screen]').click();
+  await wait(300);
+  const removed = tabs();
+  // What's saved now, to put back if the save below goes through: this check must never change the settings.
+  const saved = await el._hass.callWS({type: 'tv_panel/settings', entry_id: el.entryId});
+  // A TV without chips gets one for the try; load() below drops it again.
+  if (!el.s.chips.length) el.s.chips.push({type: 'cameras'});
+  el.s.chips[0].ok = {action: 'screen', screen: 'gone_screen'};
+  await el.save();
+  const refused = root.getElementById('status').textContent;
+  let restored = false;
+  if (!refused.startsWith('Not saved')) {
+    const {chips, cameras, tank, solar, screens} = saved;
+    const settings = {chips, cameras, tank, solar, screens};
+    await el._hass.callWS({type: 'tv_panel/save', entry_id: el.entryId, settings});
+    restored = true;
+  }
+  await el.load(el.entryId);
+  return JSON.stringify({before, added, selected, search, removed, refused, restored});
 })()"""
 
 
@@ -174,6 +217,20 @@ def main() -> int:
         ok = bool(after) and after["clipped"] <= 1 and after["tvTop"] >= 0 and after["tvBottom"] <= after["height"]
         failed |= not ok
         print(f"{'ok  ' if ok else 'FAIL'} after a state change and a scroll to the bottom: {after}")
+        screens = json.loads(
+            page.call("Runtime.evaluate", expression=SCREENS, awaitPromise=True, returnByValue=True)["result"]["value"]
+        )
+        ok = (
+            bool(screens)
+            and screens["added"] == [*screens["before"], "Thermostat"]
+            and screens["selected"] == "Thermostat"
+            and screens["search"]
+            and screens["removed"] == screens["before"]
+            and "which was removed" in screens["refused"]
+            and not screens["restored"]
+        )
+        failed |= not ok
+        print(f"{'ok  ' if ok else 'FAIL'} add a screen, remove it, and a chip opening a removed one: {screens}")
         if args.shot:
             if args.click:
                 page.call("Runtime.evaluate", expression=(SCROLL % json.dumps(args.click)).replace(

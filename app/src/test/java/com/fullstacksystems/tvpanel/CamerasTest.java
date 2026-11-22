@@ -67,7 +67,7 @@ public class CamerasTest {
         assertEquals("motion_sensor", cams.icon);
         assertEquals(Ha.ORANGE, cams.colour);
         assertTrue(cams.open);
-        assertEquals(Ha.CAMERAS, cams.page);
+        assertEquals(Ha.CAMERAS, cams.screen);
 
         String still = reply.replace("\"motion\": true", "\"motion\": false");
         assertEquals("cctv", Ha.parseWidgets(still).get(1).icon);

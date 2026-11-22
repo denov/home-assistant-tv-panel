@@ -65,9 +65,12 @@ def ws_save(hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg
     if (entry := _entry(hass, connection, msg)) is None:
         return
     try:
-        settings = model.validate(msg["settings"])
+        settings = model.validate(msg["settings"], hass, model.settings(hass, entry.options))
     except vol.Invalid as err:
         connection.send_error(msg["id"], websocket_api.ERR_INVALID_FORMAT, str(err))
         return
+    # A page loaded before 0.7.0 sends no screens: keep the ones saved, rather than drop them with the old options.
+    if "screens" not in settings and "screens" in entry.options:
+        settings["screens"] = entry.options["screens"]
     hass.config_entries.async_update_entry(entry, options=settings)
     connection.send_result(msg["id"])

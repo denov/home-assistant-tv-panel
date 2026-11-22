@@ -62,7 +62,7 @@ public class ApexTest {
     }
 
     @Test
-    public void apexChipsOpenTheApexPage() throws Exception {
+    public void apexChipsOpenTheTankScreen() throws Exception {
         String json = "{\"on\": \"on\", \"items\": ["
                 + "{\"id\": \"sensor.apex_ph\", \"name\": \"Apex pH\", \"device\": \"Apex\", \"state\": \"8.08\", \"apex\": \"pH\"},"
                 + "{\"id\": \"sensor.apex_current_2\", \"name\": \"Apex Current 2\", \"device\": \"Apex\", \"state\": \"1\", \"apex\": \"Amps\"},"
@@ -70,10 +70,10 @@ public class ApexTest {
                 + " \"device\": \"Envoy\", \"state\": \"0.4\", \"unit\": \"kW\", \"dc\": \"power\"}]}";
         List<Ha.Widget> w = Ha.parseWidgets(json);
         for (Ha.Widget x : w) {
-            if (x.key.equals("sensor.apex_ph")) assertEquals(Ha.APEX, x.page);
+            if (x.key.equals("sensor.apex_ph")) assertEquals(Ha.APEX, x.screen);
             if (x.key.equals("sensor.apex_current_2")) assertFalse(x.open);
-            if (x.key.startsWith("sensor.envoy")) assertEquals(Ha.SOLAR_PAGE, x.page);
+            if (x.key.startsWith("sensor.envoy")) assertEquals(Ha.SOLAR_SCREEN, x.screen);
         }
-        assertTrue(Apex.PAGE_TYPES.contains("Cond"));
+        assertTrue(Apex.CHIP_TYPES.contains("Cond"));
     }
 }

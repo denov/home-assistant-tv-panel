@@ -13,7 +13,7 @@ import java.util.List;
 import java.util.Locale;
 
 /**
- * The cameras page's data: every camera entity with the label {@value Ha#LABEL}, in the order the optional text helper
+ * The cameras screen's data: every camera entity with the label {@value Ha#LABEL}, in the order the optional text helper
  * {@value #ORDER} gives (camera names or entity ids, comma-separated; cameras it leaves out follow by name). Motion is any motion binary sensor on the
  * camera's device being on. Also reads the MJPEG stream Home Assistant serves for the full-screen view. Pure Java
  * (no Android types) so the JVM tests cover it.

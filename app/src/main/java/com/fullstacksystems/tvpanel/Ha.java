@@ -59,30 +59,36 @@ final class Ha {
     private Ha() {
     }
 
-    /** Pages a chip can open: OpenActivity routes on these. */
-    static final String WEATHER = "weather", SOLAR_PAGE = "solar", APEX = "apex", CAMERAS = "cameras";
-    /** Not a page: OK on the chip toggles the cover (the garage door) through Home Assistant. */
+    /** Screens a chip can open: OpenActivity routes on these. */
+    static final String WEATHER = "weather", SOLAR_SCREEN = "solar", APEX = "apex", CAMERAS = "cameras";
+    /** Not a screen: OK on the chip toggles the cover (the garage door) through Home Assistant. */
     static final String TOGGLE = "toggle";
-    /** Not a page: OK on the chip is a press the integration carries out (POST /api/tv_panel/press). */
+    /** Not a screen: OK on the chip is a press the integration carries out (POST /api/tv_panel/press). */
     static final String PRESS = "press";
-    /** Not a page: OK does nothing on the TV, and only tells the integration, for its event. */
+    /** Not a screen: OK does nothing on the TV, and only tells the integration, for its event. */
     static final String EVENT_ONLY = "event";
+    /** What the event says for a screen the TV opened itself, or for a chip that does nothing. */
+    static final String OPENED_SCREEN = "screen", DID_NOTHING = "none";
     /**
-     * Not paired (or signed out): the row is one chip, and OK on it opens TV Panel's own page with the pairing code.
+     * Not paired (or signed out): the row is one chip, and OK on it opens TV Panel's status screen with the pairing code.
      * So the launcher can leave TV Panel's tile off Home without hiding the way to pair.
      */
     static final String SETUP = "setup";
-    /** What a page says when the TV isn't paired yet. */
+    /** What a screen says when the TV isn't paired yet. */
     static final String NOT_PAIRED = "Not paired with Home Assistant yet. Add the TV Panel integration in Home Assistant"
-            + " and enter the code that TV Panel's own page shows (OK on the TV Panel chip on Home opens it).";
-    /** A page for one camera full screen: "camera/camera.driveway". */
-    static final String CAMERA_PAGE = "camera/";
+            + " and enter the code that TV Panel shows (OK on the TV Panel chip on Home opens it).";
+    /** The screen for one camera full screen: "camera/camera.driveway". */
+    static final String CAMERA_SCREEN = "camera/";
+    /** A screen the owner added (0.7.0), by its id: "screen/thermostat". OpenActivity opens it by its type. */
+    static final String ADDED_SCREEN = "screen/";
+    /** The types of screen the owner can add, and the screens that show them. */
+    static final String THERMOSTAT = "thermostat", AIR_QUALITY = "air_quality";
     /** Splits a chip's label and value into columns (the tank chip); the launcher draws each pair as one column. */
     static final String COLUMN = "\t";
 
     /**
-     * A chip on Home. {@code icon} is a bundled icon name (see Icons). {@code page} is the page OK opens
-     * ({@link #WEATHER}, {@link #SOLAR_PAGE}, {@link #APEX}) or "" for none; {@code open} says there is one.
+     * A chip on Home. {@code icon} is a bundled icon name (see Icons). {@code screen} is the screen OK opens
+     * ({@link #WEATHER}, {@link #SOLAR_SCREEN}, {@link #APEX}) or "" for none; {@code open} says there is one.
      */
     static final class Widget {
         final String key;
@@ -91,25 +97,25 @@ final class Ha {
         final String icon;
         final int colour;
         final boolean open;
-        final String page;
+        final String screen;
         final String sortGroup;
 
-        Widget(String key, String label, String value, String icon, int colour, String page, String sortGroup) {
+        Widget(String key, String label, String value, String icon, int colour, String screen, String sortGroup) {
             this.key = key;
             this.label = label;
             this.value = value;
             this.icon = icon;
             this.colour = colour;
-            this.page = page;
-            this.open = !page.isEmpty();
+            this.screen = screen;
+            this.open = !screen.isEmpty();
             this.sortGroup = sortGroup;
         }
 
         Widget withLabel(String l) {
-            return new Widget(key, l, value, icon, colour, page, sortGroup);
+            return new Widget(key, l, value, icon, colour, screen, sortGroup);
         }
 
-        Widget withPage(String p) {
+        Widget withScreen(String p) {
             return new Widget(key, label, value, icon, colour, p, sortGroup);
         }
     }
@@ -177,7 +183,7 @@ final class Ha {
             String label = settings.labels.get(w.key);
             if (label != null && !APEX.equals(w.key)) w = w.withLabel(label);
             Settings.Ok ok = settings.oks.get(w.key);
-            if (ok != null) w = w.withPage(pageOf(ok));
+            if (ok != null) w = w.withScreen(screenOf(ok));
             out.set(i, w);
         }
         // The integration's list is in the order the person chose; the labels have none, so sort those.
@@ -197,7 +203,7 @@ final class Ha {
         int at = -1;
         for (int i = chips.size() - 1; i >= 0; i--) {
             Widget w = chips.get(i);
-            if (!CAMERAS.equals(w.page)) continue;
+            if (!CAMERAS.equals(w.screen)) continue;
             any = true;
             motion |= "motion_sensor".equals(w.icon);
             chips.remove(i);
@@ -211,7 +217,7 @@ final class Ha {
     }
 
     /**
-     * Every Apex probe chip (they all open the one tank page) becomes one chip, {@value #APEX}, with a fish icon. Its
+     * Every Apex probe chip (they all open the one tank screen) becomes one chip, {@value #APEX}, with a fish icon. Its
      * label and value are tab-separated lists in step ("Alkalinity\tpH\t..." over "9.53 dKH\t8.23\t..."), which the
      * launcher draws as columns, each label left-aligned over its reading. While the Apex alarm is on, the fish turns
      * red and an "Alarm" column comes first with the number of active alerts.
@@ -226,7 +232,7 @@ final class Ha {
         int at = -1;
         for (int i = chips.size() - 1; i >= 0; i--) {
             Widget w = chips.get(i);
-            if (!APEX.equals(w.page)) continue;
+            if (!APEX.equals(w.screen)) continue;
             probes.add(0, w);
             chips.remove(i);
             at = i;
@@ -268,7 +274,7 @@ final class Ha {
             String label = garage && ("Door".equalsIgnoreCase(name) || name.isEmpty()) ? "Garage" : name;
             boolean shut = "closed".equals(state);
             // A garage door is an icon alone (shut in blue, open or moving in orange, grey when HA can't see it),
-            // and OK on it toggles the door: OpenActivity calls cover.toggle instead of opening a page.
+            // and OK on it toggles the door: OpenActivity calls cover.toggle instead of opening a screen.
             if (garage) {
                 return new Widget(id, label, "", shut ? "garage" : "garage_open",
                         missing ? GREY : shut ? BLUE : ORANGE, TOGGLE, "1" + str(e, "device"));
@@ -297,25 +303,37 @@ final class Ha {
         String icon = solar ? "solar_power" : iconFor(str(e, "icon"), dc);
         // "Current power production" says less than "Solar" in a chip; a short name of the owner's own stays.
         if (solar && name.length() > 14) name = "Solar";
-        // Solar opens the solar page (SolarActivity), which reads the Envoy the sensor belongs to; an Apex water or
-        // Trident probe opens the Apex page (ApexActivity).
-        String page = solar ? SOLAR_PAGE : Apex.PAGE_TYPES.contains(str(e, "apex")) ? APEX : "";
-        return new Widget(id, name, value, icon, solar ? AMBER : BLUE, page, "2" + str(e, "device"));
+        // Solar opens the solar screen (SolarActivity), which reads the Envoy the sensor belongs to; an Apex water or
+        // Trident probe opens the tank screen (ApexActivity).
+        String screen = solar ? SOLAR_SCREEN : Apex.CHIP_TYPES.contains(str(e, "apex")) ? APEX : "";
+        return new Widget(id, name, value, icon, solar ? AMBER : BLUE, screen, "2" + str(e, "device"));
     }
 
-    /** The page a chip's OK opens ("" for none), or {@link #PRESS}. */
-    static String pageOf(Settings.Ok ok) {
+    /** The screen a chip's OK opens ("" for none), or {@link #PRESS} or {@link #EVENT_ONLY}. */
+    static String screenOf(Settings.Ok ok) {
         if (ok.isPress()) return PRESS;
-        if ("none".equals(ok.action)) return EVENT_ONLY;
-        if (!"page".equals(ok.action)) return "";
-        switch (ok.page) {
+        if (!ok.isScreen()) return "none".equals(ok.action) ? EVENT_ONLY : "";
+        switch (ok.screen) {
             case "weather": return WEATHER;
-            case "solar": return SOLAR_PAGE;
+            case "solar": return SOLAR_SCREEN;
             case "tank": return APEX;
             case "cameras": return CAMERAS;
-            case "camera": return ok.camera.startsWith("camera.") ? CAMERA_PAGE + ok.camera : "";
-            default: return "";
+            case "camera": return ok.camera.startsWith("camera.") ? CAMERA_SCREEN + ok.camera : "";
+            default: return ok.screen.isEmpty() ? "" : ADDED_SCREEN + ok.screen;
         }
+    }
+
+    /**
+     * An added screen's type ({@link #THERMOSTAT}, {@link #AIR_QUALITY}) from the TV's list; when the app doesn't have
+     * the list yet (it was restarted), from the id, which the settings page makes from the type. "" for neither.
+     */
+    static String screenType(Settings settings, String id) {
+        Settings.Screen s = settings.screen(id);
+        if (s != null) return s.type;
+        for (String type : new String[] {THERMOSTAT, AIR_QUALITY}) {
+            if (id.equals(type) || id.matches(type + "_[0-9]+")) return type;
+        }
+        return "";
     }
 
     static String pressBody(String key) {
@@ -327,8 +345,8 @@ final class Ha {
     }
 
     /**
-     * A press only for the integration's event: the TV opened a page ({@code action} "page") or the chip does
-     * nothing ("none"). The integration carries out nothing for it, whatever the chip is set to there now.
+     * A press only for the integration's event: the TV opened a screen ({@code action} {@value #OPENED_SCREEN}) or the
+     * chip does nothing ({@value #DID_NOTHING}). The integration carries out nothing for it, whatever the chip is set to there now.
      */
     static String pressBody(String key, String action) {
         try {
@@ -339,22 +357,22 @@ final class Ha {
     }
 
     /**
-     * The page a chip opens when the app has no chips yet (it was restarted while Home showed them): only what the
+     * The screen a chip opens when the app has no chips yet (it was restarted while Home showed them): only what the
      * key itself says. Anything else could be set to do anything, so it does nothing rather than guess.
      */
-    static String guessPage(String key) {
+    static String guessScreen(String key) {
         if (key.equals(SETUP)) return SETUP;
         if (key.startsWith("weather.")) return WEATHER;
         if (key.equals(CAMERAS) || key.startsWith("camera.")) return CAMERAS;
         if (key.equals(APEX) || key.startsWith("sensor.apex_")) return APEX;
         if (key.startsWith("sensor.") && (key.contains("production") || key.contains("solar") || key.contains("pv"))) {
-            return SOLAR_PAGE;
+            return SOLAR_SCREEN;
         }
         return "";
     }
 
     /**
-     * The weather entity a page opened without a chip shows (tv_panel.show, voice): the TV's first weather chip that
+     * The weather entity a screen opened without a chip shows (tv_panel.show, voice): the TV's first weather chip that
      * Home Assistant has and isn't unavailable, else the weather entity that's reporting and has a daily forecast, else
      * one that's reporting, else any that isn't unavailable. The first in Home Assistant's list wins a tie. Null when
      * there's none.
@@ -399,7 +417,7 @@ final class Ha {
         return text.substring(0, cut) + "…";
     }
 
-    /** What to show after a press: the integration's message, or "" when there's nothing to say (a page, nothing). */
+    /** What to show after a press: the integration's message, or "" when there's nothing to say (a screen, nothing). */
     static String pressMessage(String json) {
         try {
             return new JSONObject(json).optString("message", "");

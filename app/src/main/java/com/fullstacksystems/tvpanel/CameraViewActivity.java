@@ -65,7 +65,7 @@ public class CameraViewActivity extends Activity implements SurfaceHolder.Callba
     @Override
     protected void onCreate(Bundle state) {
         super.onCreate(state);
-        OpenActivity.PAGES.add(this);
+        OpenActivity.SCREENS.add(this);
         dp = getResources().getDisplayMetrics().density;
         current = getIntent().getStringExtra(WeatherActivity.EXTRA_KEY);
         FrameLayout frame = new FrameLayout(this);
@@ -124,7 +124,7 @@ public class CameraViewActivity extends Activity implements SurfaceHolder.Callba
 
     @Override
     protected void onDestroy() {
-        OpenActivity.PAGES.remove(this);
+        OpenActivity.SCREENS.remove(this);
         stopStream();
         io.shutdownNow();
         super.onDestroy();

@@ -5,10 +5,10 @@ Brought to you by [Fullstack Systems](https://fullstacksystems.com).
 <a href="https://www.buymeacoffee.com/denov" target="_blank" rel="noreferrer noopener"><img src="https://img.buymeacoffee.com/button-api/?text=Buy%20me%20a%20coffee&emoji=&slug=denov&button_colour=FFDD00&font_colour=000000&font_family=Bree&outline_colour=000000&coffee_colour=ffffff" alt="Buy me a coffee" height="40"></a>
 
 Home Assistant on an Android TV's home screen: a row of live chips under the clock (weather, cameras, garage door, a
-reef tank, solar), full pages for weather, solar, the tank and cameras that automations and voice can open, and
-messages from Home Assistant on the screen.
+reef tank, solar), full screens for weather, solar, the tank, cameras, thermostats and air quality that OK on a
+chip, automations and voice can open, and messages from Home Assistant on the screen.
 
-The reef tank chip and page are made for our [Neptune Apex integration](https://github.com/denov/home-assistant-apex-neptune): with it installed, the tank's
+The reef tank chip and screen are made for our [Neptune Apex integration](https://github.com/denov/home-assistant-apex-neptune): with it installed, the tank's
 probes, Trident results, dosing and alarm show up on the TV with nothing to set up, and its feed buttons can be
 pressed from the remote (see [What OK does](#what-ok-does)).
 
@@ -18,10 +18,10 @@ Two parts, both in this repo:
   code, you type it into Home Assistant, and the TV gets its own user and token: a normal user, not an admin, that only
   works from the local network. The integration works out what the TV draws, so the TV needs nothing more. Removing the
   integration signs the TV out.
-- **The TV Panel app** for Android TV / Google TV (`app/`, package `com.fullstacksystems.tvpanel`). It draws the pages,
+- **The TV Panel app** for Android TV / Google TV (`app/`, package `com.fullstacksystems.tvpanel`). It draws the screens,
   and serves the chips to the launcher.
 
-The pages work with any launcher. The **chip row** needs a launcher that reads TV Panel's widget provider:
+The screens work with any launcher. The **chip row** needs a launcher that reads TV Panel's widget provider:
 [TV Panel Launcher](https://github.com/denov/tv-panel-launcher), our fork of the
 [CleanYourTV](https://github.com/Gathin23/cleanyourtv) launcher (see [Launcher](#launcher)).
 
@@ -76,9 +76,7 @@ of the TV's row, live from your Home Assistant, and these settings:
 | Section | What it does |
 |---|---|
 | **Chips** | What the TV's home screen shows, in order. Drag a chip, or use the arrows. Search shows each entity's current value, so it's easy to pick the right one. A chip's **label** replaces the entity's name on the TV. |
-| **Cameras** | The cameras the Cameras chip opens, in grid order: left to right, top row first. |
-| **Tank** | The Apex readings on the tank chip, one column each, in this order. |
-| **Solar panel layout** | Optional: where each inverter sits on the roof (see [Solar panel layout](#solar-panel-layout)). |
+| **Screens** | What the TV shows full screen, a tab each (see [Screens](#screens)). **Cameras**: the camera grid's cameras, left to right, top row first. **Tank**: the Apex readings on the tank chip, one column each, in this order. **Solar**: optionally, where each inverter sits on the roof (see [Solar panel layout](#solar-panel-layout)). **Add a screen…** adds a thermostat or air quality screen. |
 
 Adding a camera or an Apex probe as a chip puts it in its group, and adds the group's chip if it isn't there yet.
 A thermostat (a `climate` entity) shows where it is and where it's set: "68° → 70°", or "69° → 69–78°" for a range.
@@ -87,14 +85,14 @@ Press **Save**; the TV picks it up within about 15 seconds. **Configure** on the
 
 ### What OK does
 
-Under each chip, the page says what OK on it does: "OK opens the weather page", "OK twice opens or closes Garage
-Door", "OK does nothing". **Change** sets it:
+Beside each chip's arrows, an icon shows what OK on it does on the TV; point at it to read it ("OK opens the weather
+screen", "OK twice opens or closes Garage Door", "OK does nothing"). Click it to change it:
 
 | On OK | |
 |---|---|
-| **Default** | Weather, solar, the tank and the cameras open their pages. A garage door, gate or door (a cover) opens or closes when OK is pressed twice. Anything else, locks included, does nothing. |
+| **Default** | Weather, solar, the tank and the cameras open their screens. A thermostat opens the first thermostat screen that lists it, and a sensor the first air quality screen that lists it. A garage door, gate or door (a cover) opens or closes when OK is pressed twice. Anything else, locks included, does nothing. |
 | **Do nothing** | The chip only shows its value. |
-| **Open a page** | Weather, solar, the tank, the camera grid, or one camera full screen. |
+| **Open a screen** | Any of the TV's screens, or one camera full screen. |
 | **Toggle something** | A light, switch, fan, cover, lock and so on: the chip's own entity or another. |
 | **Run a script or scene** | |
 | **Perform an action** | Any action, such as `light.turn_on`, with an optional target and data (JSON). |
@@ -107,11 +105,12 @@ opening").
 For example, with the [Neptune Apex integration](https://github.com/denov/home-assistant-apex-neptune), feed the tank from the couch: set the Tank chip to
 **Perform an action**, `button.press` with the target `button.apex_feed_a` (your Feed A button), and tick **Press OK
 twice**, since a feed cycle may run an auto feeder. One OK on the TV asks; the second starts Feed A, and the TV says so.
-The chip still shows the readings, and the tank page still opens
+The chip still shows the readings, and the tank screen still opens
 [by voice](#by-voice-assist).
 
 Every press also fires the event `tv_panel_chip_pressed`, with `chip` (the entity id, or `cameras` / `apex` for the
-groups), `tv`, `entry_id` and `action`, so an automation can act on any chip, even one set to do nothing:
+groups), `tv`, `entry_id` and `action` (`screen`, `toggle`, `run`, `perform` or `none`; before 0.7.0 a screen was
+`page`), so an automation can act on any chip, even one set to do nothing:
 
 ```yaml
 triggers:
@@ -128,13 +127,15 @@ The first time, the page starts from the older setup: entities labelled **tv_wid
 `input_text.tv_camera_order`. The switch starts from `input_boolean.tv_widgets`. Until you save, the app keeps using
 those, and it uses them too on a TV set up without the integration (see [Helper scripts](#helper-scripts)).
 
-The **Solar** chip (an Enphase Envoy power sensor) opens a solar page:
+The **Solar** chip (an Enphase Envoy power sensor) opens the solar screen. It's built for Enphase: it needs an Enphase
+Envoy and Home Assistant's [Enphase Envoy integration](https://www.home-assistant.io/integrations/enphase_envoy/), plus
+battery charge and discharge sensors if you have batteries (found by name). It shows:
 - **Now:** grid, solar, battery and home, each with today's kWh.
 - **Panels:** every panel on your own layout. Left, Right or OK switches between watts now and kWh today.
 - **Today:** a chart per 15 minutes.
 - **Totals:** today, this week and this month.
 
-The **Tank** chip (Neptune Apex probes from the [Neptune Apex integration](https://github.com/denov/home-assistant-apex-neptune): temperature, pH, salinity and Trident alkalinity, calcium and magnesium, merged into one chip with a column per reading; the fish turns red while the Apex alarm is on) opens a reef tank page:
+The **Tank** chip (Neptune Apex probes from the [Neptune Apex integration](https://github.com/denov/home-assistant-apex-neptune): temperature, pH, salinity and Trident alkalinity, calcium and magnesium, merged into one chip with a column per reading; the fish turns red while the Apex alarm is on) opens the reef tank screen:
 - **Water:** both probes of each kind.
 - **Trident:** the latest results.
 - **Reagents & dosing:** reagents with tests left, waste % full, and DOS containers.
@@ -154,17 +155,55 @@ orange motion icon while any of their devices' motion sensors is on. OK opens a 
 moving, grey when Home Assistant can't see it. OK asks "Press OK again to open the garage"; a second OK within 3 s
 calls `cover.toggle`.
 
-Set the grid's order with an optional text helper, `input_text.tv_camera_order`. It takes camera names or entity
-IDs separated by commas, for example `Front Door, Driveway, Back Yard`, filled left to right with the top row first.
-Cameras it doesn't list follow by name, and without the helper they all go by name. `ha/dashboard.py` creates it and
-puts it on the TV Widgets dashboard. "Camera - " is dropped from the front of names.
+The grid's order is set on the page's **Cameras** tab. (Without the integration, an optional text helper,
+`input_text.tv_camera_order`, sets it: camera names or entity IDs separated by commas, such as `Front Door, Driveway,
+Back Yard`. See [Helper scripts](#helper-scripts).) "Camera - " is dropped from the front of names.
 
-The panel layout is set in Configure (see [Solar panel layout](#solar-panel-layout)). Without one, the panels are
-shown in rows.
+The panel layout is set on the page's **Solar** tab (see [Solar panel layout](#solar-panel-layout)). Without one, the
+panels are shown in rows.
 
-Order: weather first, then cameras, covers and locks, then everything else grouped by device and sorted by name. At most 8 chips;
-the row shrinks to fit the screen. Weather chips open the weather page (now, next 12 hours, 5 days) from the
-entity's `weather.get_forecasts`. Changes show up on the TV within about 15 seconds.
+At most 8 chips; the row shrinks to fit the screen. Until the page is first saved, they come weather first, then
+cameras, covers and locks, then everything else grouped by device and sorted by name. Weather chips open the weather
+screen (now, next 12 hours, 5 days) from the entity's `weather.get_forecasts`. Changes show up on the TV within about
+15 seconds.
+
+### Screens
+
+The page's **Screens** card has a tab for each of the TV's screens. Every TV starts with the weather, solar, tank and
+camera screens. **Add a screen…** adds a thermostat or an air quality screen (as many as you like), or puts back one
+of the four you removed. **Remove this screen** takes one away; the page won't save while a chip's OK still opens
+it, and names the chip.
+
+Each screen has an id, used by [`tv_panel.show`](#open-a-screen-from-home-assistant) and by voice. It's made once,
+from the type, when the screen is added (`thermostat`, then `thermostat_2`; `air_quality`) and stays the same when
+you rename the screen. The four built-in ones are `weather`, `solar`, `tank` and `cameras`. The tab says each
+screen's id.
+
+**Thermostat screen:** up to four thermostats side by side. Any `climate` entity works (ecobee, Nest, Z-Wave,
+generic_thermostat and others): it reads only Home Assistant's standard climate attributes. Each shows where it is,
+where it's set ("68–76°" for a range, nothing when it's off), its mode, what it's doing (orange heating, blue cooling,
+grey idle), humidity, fan and preset when it has them, and the last 24 hours: the temperature over the target band,
+with heating and cooling marked along the bottom. Up to 8 other readings, such as other rooms or outside, go along
+the bottom. A thermostat without its own current temperature uses the first temperature among them. Temperatures are
+in Home Assistant's unit. It only shows: the remote changes nothing.
+
+**Air quality screen:** a tile for each sensor, up to 12, with its room and name ("Den · CO2": the device's
+name is dropped, as on the chips), its value and the last 24 hours. Any sensor
+works; the page suggests the ones Home Assistant knows measure air (AQI, PM1, PM2.5, PM10, CO₂, CO, VOC, NO₂, NO, ozone, SO₂), by
+room, and search finds any other, such as humidity or temperature. A tile is coloured only where the sensor's device
+class and unit are ones these levels cover:
+
+| Device class | Unit | Levels |
+|---|---|---|
+| `aqi` | none | US EPA: Good 0–50, Moderate 51–100, Unhealthy for sensitive groups 101–150, Unhealthy 151–200, Very unhealthy 201–300, Hazardous 301+ |
+| `pm25` | µg/m³ | US EPA (2024): 9.0, 35.4, 55.4, 125.4, 225.4 |
+| `pm10` | µg/m³ | US EPA: 54, 154, 254, 354, 424 |
+| `carbon_monoxide` | ppm | US EPA: 4.4, 9.4, 12.4, 15.4, 30.4 |
+| `carbon_dioxide` | ppm | Good up to 800, Fair up to 1200, then Poor (a ventilation rule of thumb, not a health limit) |
+
+The EPA's levels are 40 CFR Part 58, Appendix G, as revised in March 2024. They're meant for 24-hour (PM) and 8-hour
+(CO) averages, so on a reading now the colour is a guide. Anything else, VOC sensors included (an index, ppb and
+µg/m³ don't compare), shows its value in grey.
 
 ## Build
 
@@ -202,17 +241,19 @@ draws them like this:
 - A row with an empty value is its icon alone.
 - A label and value that are tab-separated lists of the same length are drawn as columns, each label over its value.
 - OK on a chip with `open = 1` sends `com.gathin.tvhome.action.OPEN_WIDGET` to this app, with the chip's `key` as an
-  extra. TV Panel opens the page, or carries out the chip's action (see [What OK does](#what-ok-does)).
+  extra. TV Panel opens the chip's screen, or carries out its action (see [What OK does](#what-ok-does)).
 
 Before it's paired (or once Home Assistant has signed it out), the row is one chip, **Pair with Home Assistant**, and
-OK on it opens the page with the pairing code. So TV Panel Launcher leaves TV Panel's own tile off Home; Hold OK on any
+OK on it opens TV Panel's status screen with the pairing code. So TV Panel Launcher leaves TV Panel's own tile off Home; Hold OK on any
 chip opens TV Panel too.
 
-The app only fetches while the launcher asks, at most every 12 s, and has no background service.
+For the chips, the app fetches only while the launcher asks, at most every 12 s. It keeps one connection open, for
+[messages](#messages-on-the-tv).
 
 ## Solar panel layout
 
-Paste it into the page's **Solar panel layout** box, as JSON:
+Paste it into the **Solar** tab of the page's **Screens** card, as JSON. `id` is the microinverter's serial, as in its
+`sensor.inverter_<serial>` name:
 
 ```json
 {"arrays": [{"name": "Array 1", "panels": [{"id": "<inverter serial>", "x": 0, "y": 0, "w": 2, "h": 1}]}]}
@@ -238,10 +279,12 @@ missing. It overwrites the `tv-widgets` dashboard.
 
 Icons: [Material Design Icons](https://pictogrammers.com/library/mdi/) (Pictogrammers Free License).
 
-## Open a page from Home Assistant
+## Open a screen from Home Assistant
 
-`tv_panel.show` opens a page on the TV from any automation or script: `weather`, `solar`, `tank`, `cameras` (the
-grid) or `camera` (one camera full screen, with `camera`). For example, show the front door when the doorbell rings:
+`tv_panel.show` opens a screen on the TV from any automation or script. `screen` is the screen's id (see
+[Screens](#screens)): `weather`, `solar`, `tank`, `cameras` (the grid), one you added such as `thermostat`, or
+`camera` (one camera full screen, with `camera`). Before 0.7.0 it was called `page`, which still works. For example,
+show the front door when the doorbell rings:
 
 ```yaml
 triggers:
@@ -251,12 +294,13 @@ triggers:
 actions:
   - action: tv_panel.show
     data:
-      page: camera
+      screen: camera
       camera: camera.front_door
 ```
 
-A TV that's off stays off, unless you add `wake: true`. If the screensaver is showing, it's closed so the page can be
-seen. With more than one TV, pick them with `device_id`; without it, every TV shows the page.
+A TV that's off stays off, unless you add `wake: true`. If the screensaver is showing, it's closed so the screen can
+be seen. With more than one TV, pick them with `device_id`; without it, every TV shows the screen. A TV that doesn't
+have that screen says so, and lists the ones it has.
 
 It goes through Home Assistant's **Android TV Remote** integration, set up for the same TV (the address you paired
 TV Panel with), so add that first.
@@ -271,17 +315,33 @@ alias: TV Weather
 sequence:
   - action: tv_panel.show
     data:
-      page: weather
+      screen: weather
       wake: true
 ```
 
-Saying the alias runs it. An alias has to be said word for word. For looser wording, such as "show me the weather
-forecast", add an automation with a sentence trigger, `show [me] [the] weather [forecast]`, that runs the script. A
-new command replaces the page already showing, and Back returns to what was there before.
+Saying the alias runs it. An alias has to be said word for word. For looser wording, add an automation with a
+sentence trigger that runs the script. For a thermostat screen you added, say "show the thermostats" or "show me the
+heating":
 
-The pages are also deep links (`tvpanel://weather`, `tvpanel://solar`, `tvpanel://apex`, `tvpanel://cameras` and
-`tvpanel://cameras/<camera entity id>`), which `remote.turn_on` on the Android TV Remote entity opens with
-`activity: tvpanel://weather`.
+```yaml
+alias: TV Thermostats
+triggers:
+  - trigger: conversation
+    command:
+      - "show [me] [the] (thermostat | thermostats | heating)"
+actions:
+  - action: tv_panel.show
+    data:
+      screen: thermostat
+      wake: true
+```
+
+A new command replaces the screen already showing, and Back returns to what was there before.
+
+The screens are also deep links: `tvpanel://weather`, `tvpanel://solar`, `tvpanel://apex`, `tvpanel://cameras`,
+`tvpanel://cameras/<camera entity id>` and `tvpanel://screen/<id>` for one you added. `remote.turn_on` on the Android
+TV Remote entity opens them, with `activity: tvpanel://screen/thermostat`. Unlike `tv_panel.show`, that doesn't close
+the screensaver: the screen opens behind it.
 
 ## Messages on the TV
 

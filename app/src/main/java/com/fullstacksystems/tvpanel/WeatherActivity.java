@@ -49,8 +49,8 @@ public class WeatherActivity extends Activity {
     @Override
     protected void onCreate(Bundle state) {
         super.onCreate(state);
-        OpenActivity.PAGES.add(this);
-        // Opened by voice while Ambient Mode runs, the page would sit behind the screensaver. Asking to turn the screen
+        OpenActivity.SCREENS.add(this);
+        // Opened by voice while Ambient Mode runs, the screen would sit behind the screensaver. Asking to turn the screen
         // on makes Android wake from the screensaver (it does nothing when the TV is already awake).
         if (Build.VERSION.SDK_INT >= 27) setTurnScreenOn(true);
         dp = getResources().getDisplayMetrics().density;
@@ -78,7 +78,7 @@ public class WeatherActivity extends Activity {
 
     @Override
     protected void onDestroy() {
-        OpenActivity.PAGES.remove(this);
+        OpenActivity.SCREENS.remove(this);
         io.shutdownNow();
         super.onDestroy();
     }
@@ -138,7 +138,7 @@ public class WeatherActivity extends Activity {
         }
     }
 
-    /** The page was opened without a chip (tv_panel.show, voice): see {@link Ha#pickWeather}. */
+    /** The screen was opened without a chip (tv_panel.show, voice): see {@link Ha#pickWeather}. */
     private static String firstWeather(Config c, JSONArray states) {
         List<String> chips = new ArrayList<>();
         for (Ha.Widget w : WidgetProvider.current()) chips.add(w.key);

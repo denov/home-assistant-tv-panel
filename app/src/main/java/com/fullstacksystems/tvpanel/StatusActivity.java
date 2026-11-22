@@ -14,7 +14,7 @@ import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
-/** The app's own page: is Home Assistant reachable, and which chips does it give. Setup lives in Home Assistant. */
+/** The app's own status screen: is Home Assistant reachable, and which chips does it give. Setup lives in Home Assistant. */
 public class StatusActivity extends Activity {
     private final ExecutorService io = Executors.newSingleThreadExecutor();
     private final Handler main = new Handler(Looper.getMainLooper());

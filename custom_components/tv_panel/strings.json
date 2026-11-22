@@ -4,7 +4,7 @@
     "step": {
       "user": {
         "title": "Add a TV",
-        "description": "On the TV, open the TV Panel app. Its page shows the TV's address and a pairing code.",
+        "description": "On the TV, open the TV Panel app. It shows the TV's address and a pairing code.",
         "data": {
           "host": "TV address"
         },
@@ -14,7 +14,7 @@
       },
       "pair": {
         "title": "Pair {name}",
-        "description": "Enter the six-digit code on the TV's TV Panel page. Keep that page open until pairing finishes.",
+        "description": "Enter the six-digit code that TV Panel shows on the TV. Keep it open until pairing finishes.",
         "data": {
           "code": "Code"
         }
@@ -54,12 +54,12 @@
   },
   "services": {
     "show": {
-      "name": "Show a page",
-      "description": "Opens a TV Panel page, or one camera full screen, on the TV. It goes through the Android TV Remote integration for the same TV.",
+      "name": "Show a screen",
+      "description": "Opens a TV Panel screen, or one camera full screen, on the TV. It goes through the Android TV Remote integration for the same TV.",
       "fields": {
-        "page": {
-          "name": "Page",
-          "description": "The page to open."
+        "screen": {
+          "name": "Screen",
+          "description": "The screen to open."
         },
         "camera": {
           "name": "Camera",
@@ -77,7 +77,7 @@
     }
   },
   "selector": {
-    "page": {
+    "screen": {
       "options": {
         "weather": "Weather",
         "solar": "Solar",

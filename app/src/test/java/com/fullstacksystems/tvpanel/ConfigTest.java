@@ -10,7 +10,7 @@ import org.junit.Test;
 public class ConfigTest {
     @Test
     public void aFileThatDoesntReadYetMayStillBeBeingWritten() {
-        // The status page can look while install.sh's `content write` is still writing: keep it for the import that
+        // The status screen can look while install.sh's `content write` is still writing: keep it for the import that
         // runs when the write is done.
         long now = 1_000_000;
         assertTrue(Config.mayBeWriting(now - 2_000, now));

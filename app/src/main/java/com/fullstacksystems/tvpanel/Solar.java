@@ -14,7 +14,7 @@ import java.util.Map;
 import java.util.TreeSet;
 
 /**
- * The solar page's data: an Enphase Envoy in Home Assistant (the enphase_envoy integration), plus battery charge and
+ * The solar screen's data: an Enphase Envoy in Home Assistant (the enphase_envoy integration), plus battery charge and
  * discharge sensors found by name. Pure Java (no Android types) so the JVM tests cover it.
  *
  * Live values come from the integration (/api/tv_panel/data/solar), or this template without it. Totals come from the recorder's statistics over the websocket, because

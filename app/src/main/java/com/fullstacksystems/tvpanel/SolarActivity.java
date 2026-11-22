@@ -49,7 +49,7 @@ public class SolarActivity extends Activity {
     private float dp;
 
     private FrameLayout frame;
-    private View page;
+    private View screenView;
     private TextView message, status, updated, panelsTitle, panelsTotal;
     private LinearLayout totalsTable;
     private SolarViews.FlowView flow;
@@ -65,16 +65,16 @@ public class SolarActivity extends Activity {
     @Override
     protected void onCreate(Bundle state) {
         super.onCreate(state);
-        OpenActivity.PAGES.add(this);
-        // Opened by voice while Ambient Mode runs, the page would sit behind the screensaver. Asking to turn the screen
+        OpenActivity.SCREENS.add(this);
+        // Opened by voice while Ambient Mode runs, the screen would sit behind the screensaver. Asking to turn the screen
         // on makes Android wake from the screensaver (it does nothing when the TV is already awake).
         if (Build.VERSION.SDK_INT >= 27) setTurnScreenOn(true);
         dp = getResources().getDisplayMetrics().density;
         frame = new FrameLayout(this);
         frame.setBackground(new GradientDrawable(GradientDrawable.Orientation.TL_BR, new int[] {0xFF0E1A2E, 0xFF070B14}));
-        page = build();
-        page.setVisibility(View.INVISIBLE);
-        frame.addView(page);
+        screenView = build();
+        screenView.setVisibility(View.INVISIBLE);
+        frame.addView(screenView);
         message = text("Loading solar…", 22, 0xCCFFFFFF, false);
         message.setGravity(Gravity.CENTER);
         frame.addView(message, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
@@ -85,6 +85,8 @@ public class SolarActivity extends Activity {
     protected void onResume() {
         super.onResume();
         loadLive();
+        // onPause stopped the statistics' tick, and showLive only starts it the first time.
+        if (live != null) loadStats();
     }
 
     @Override
@@ -96,7 +98,7 @@ public class SolarActivity extends Activity {
 
     @Override
     protected void onDestroy() {
-        OpenActivity.PAGES.remove(this);
+        OpenActivity.SCREENS.remove(this);
         io.shutdownNow();
         super.onDestroy();
     }
@@ -132,7 +134,7 @@ public class SolarActivity extends Activity {
         }
         io.execute(() -> {
             HaClient ha = new HaClient(c.url, c.token);
-            if (zone == null) zone = haZone(ha);
+            if (zone == null) zone = Series.zone(ha);
             if (layout == null) layout = SettingsSource.get(c).solarLayout(Config.solarLayout(this));
             HaClient.Reply r = Ha.data(ha, Ha.DATA_SOLAR, Solar.templateBody());
             if (!r.ok()) {
@@ -154,15 +156,6 @@ public class SolarActivity extends Activity {
         });
     }
 
-    private static ZoneId haZone(HaClient ha) {
-        try {
-            HaClient.Reply cfg = ha.get("/api/config");
-            if (cfg.ok()) return ZoneId.of(new JSONObject(cfg.body).optString("time_zone"));
-        } catch (Exception ignored) {
-            // the TV's own zone
-        }
-        return ZoneId.systemDefault();
-    }
 
     private void loadStats() {
         main.removeCallbacks(statsTick);
@@ -242,18 +235,18 @@ public class SolarActivity extends Activity {
     private void showMessage(String s) {
         message.setText(s);
         message.setVisibility(View.VISIBLE);
-        page.setVisibility(View.INVISIBLE);
+        screenView.setVisibility(View.INVISIBLE);
     }
 
     private void showLive(Solar.Live l) {
         if (!l.hasEnvoy()) {
-            showMessage("No Enphase Envoy in Home Assistant. This page reads the Enphase Envoy integration.");
+            showMessage("No Enphase Envoy in Home Assistant. This screen reads the Enphase Envoy integration.");
             return;
         }
         boolean first = live == null;
         live = l;
         message.setVisibility(View.GONE);
-        page.setVisibility(View.VISIBLE);
+        screenView.setVisibility(View.VISIBLE);
         if (!layoutSet) {
             panels.setLayout(Solar.layout(layout == null ? Config.solarLayout(this) : layout, l.inverters.keySet()));
             layoutSet = true;

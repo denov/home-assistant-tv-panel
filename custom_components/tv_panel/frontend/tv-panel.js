@@ -12,16 +12,15 @@ const TONES = { warm: "#ff9f43", sky: "#cfe3f2", amber: "#ffc94a", blue: "#2aa7e
 const ROW_TONES = { ...TONES, sky: "#5b9bd5" };
 const GROUP_NAMES = { cameras: "Cameras", tank: "Tank" };
 const APEX_URL = "https://github.com/denov/home-assistant-apex-neptune";
-// The TV's pages that have settings, as tabs under the chips.
-const TABS = [["cameras", "Cameras"], ["tank", "Tank"], ["solar", "Solar"]];
+const ENVOY_URL = "https://www.home-assistant.io/integrations/enphase_envoy/";
+// The Screens card shows one screen at a time, as tabs; the last one chosen is remembered.
 const TAB_KEY = "tv-panel-tab";
 
 function savedTab() {
   try {
-    const t = localStorage.getItem(TAB_KEY);
-    return TABS.some(([id]) => id === t) ? t : "cameras";
+    return localStorage.getItem(TAB_KEY);
   } catch (e) {
-    return "cameras";
+    return null;
   }
 }
 
@@ -31,7 +30,7 @@ class TvPanelSettings extends HTMLElement {
   constructor() {
     super();
     this.attachShadow({ mode: "open" });
-    this.s = null; // { chips, cameras, tank, solarText, saved }
+    this.s = null; // { chips, cameras, tank, solarText, screens, saved }
     this.tvs = [];
     this.entryId = null;
     this.dirty = false;
@@ -89,6 +88,7 @@ class TvPanelSettings extends HTMLElement {
           cameras: r.cameras.slice(),
           tank: r.tank.slice(),
           solarText: r.solar ? JSON.stringify(r.solar, null, 2) : "",
+          screens: JSON.parse(JSON.stringify(chips.screensOf(r))),
           saved: r.saved,
         };
       }
@@ -159,7 +159,7 @@ class TvPanelSettings extends HTMLElement {
     this.previewHtml = null;
     this.renderPreview();
     this.renderStatus();
-    for (const list of Object.keys(this.queries)) this.renderResults(list);
+    for (const box of root.querySelectorAll(".results")) this.renderResults(box.dataset.list);
     // Refit when the page changes width (the sidebar opens, the window or phone turns) and when the row does (an icon
     // draws, a value gets longer). In the next frame, so the refit isn't a change inside the observer's own delivery.
     this.resize?.disconnect();
@@ -216,31 +216,143 @@ class TvPanelSettings extends HTMLElement {
       </div>
 
       <div class="card">
-        <div class="tabs" role="tablist" aria-label="The TV's pages">${TABS.map(([id, text]) =>
-          `<button role="tab" id="tab-${id}" data-action="tab" data-tab="${id}" aria-controls="pane-${id}"
-            aria-selected="${this.tab === id}" tabindex="${this.tab === id ? 0 : -1}">${text}</button>`).join("")}</div>
-        <div role="tabpanel" id="pane-${this.tab}" aria-labelledby="tab-${this.tab}">${this.pane(this.tab)}</div>
+        <h2>Screens</h2>
+        <p class="hint">What the TV shows full screen: when OK is pressed on a chip, by voice, or from
+          <code>tv_panel.show</code>.</p>
+        ${this.screensCard()}
       </div>`;
   }
 
-  pane(tab) {
+  // ---- the screens --------------------------------------------------------------------------------------------------
+
+  /** The screens being edited (the built-in four when none were ever saved). */
+  screens() {
+    return chips.screensOf(this.s);
+  }
+
+  screen(id) {
+    return this.screens().find((x) => x.id === id);
+  }
+
+  /** The tab shown: the one chosen while that screen is there, else the first. */
+  shownTab() {
+    const ids = this.screens().map((x) => x.id);
+    return ids.includes(this.tab) ? this.tab : ids[0] || null;
+  }
+
+  /** A list on the page: "chips", "cameras", "tank", or a screen's own, "<id>.climates" or "<id>.sensors". */
+  listGet(list) {
+    if (!list.includes(".")) return this.s[list];
+    const [id, key] = list.split(".");
+    return this.screen(id)?.[key] || [];
+  }
+
+  listSet(list, value) {
+    if (!list.includes(".")) {
+      this.s[list] = value;
+      return;
+    }
+    const [id, key] = list.split(".");
+    const sc = this.screen(id);
+    if (sc) sc[key] = value;
+  }
+
+  screensCard() {
+    const screens = this.screens();
+    const tab = this.shownTab();
+    const sc = this.screen(tab);
+    const add = chips.addableTypes(screens);
+    return `<div class="tabbar">
+        <div class="tabs" role="tablist" aria-label="The TV's screens">${screens.map((x) =>
+          `<button role="tab" id="tab-${esc(x.id)}" data-action="tab" data-tab="${esc(x.id)}" aria-controls="pane-${esc(x.id)}"
+            aria-selected="${tab === x.id}" tabindex="${tab === x.id ? 0 : -1}">${esc(chips.screenTitle(x))}</button>`).join("")}</div>
+        <select class="add-screen" data-action="add-screen" aria-label="Add a screen"><option value="">Add a screen…</option>
+          ${add.map(([t, title]) => `<option value="${t}">${esc(title)}</option>`).join("")}</select>
+      </div>
+      ${sc ? `<div role="tabpanel" id="pane-${esc(sc.id)}" aria-labelledby="tab-${esc(sc.id)}">${this.pane(sc)}</div>`
+        : `<p class="hint">No screens: OK on a chip that would open one only fires the event.</p>`}`;
+  }
+
+  /** What the screen shows and needs, its settings, how to open it, and Remove. */
+  pane(sc) {
+    const how = `<p class="hint">Open it with a chip's OK, or from an automation or a voice command with
+        <code>tv_panel.show</code> and <code>screen: ${esc(sc.id)}</code> (see the README). Its link is
+        <code>${esc(chips.screenLink(sc))}</code>.</p>`;
+    return `${this.paneBody(sc)}${how}
+      <div class="remove"><button class="secondary" data-action="remove-screen" data-screen="${esc(sc.id)}">Remove this screen</button></div>`;
+  }
+
+  /** A note when what the screen reads isn't in Home Assistant. */
+  missing(text) {
+    return `<p class="missing">${text}</p>`;
+  }
+
+  titleBox(sc) {
+    return `<div class="title-box"><label>Title <input data-action="screen-title" data-screen="${esc(sc.id)}"
+        data-focus="title-${esc(sc.id)}" value="${esc(sc.title || "")}" placeholder="${esc(chips.screenTitle({ ...sc, title: "" }))}"></label>
+      <span class="sub">Its id is <code>${esc(sc.id)}</code>, for automations and voice. Renaming it keeps the id.</span></div>`;
+  }
+
+  paneBody(sc) {
     const s = this.s;
-    if (tab === "cameras") {
+    const h = this._hass;
+    const ids = Object.keys(h.states);
+    if (sc.type === "weather") {
+      return `<p class="hint">Now, the next 12 hours and 5 days, from a weather entity with a daily forecast: the TV's
+          first weather chip, or else the weather entity that's reporting.</p>
+        ${ids.some((e) => e.startsWith("weather.")) ? "" : this.missing("No weather entity found in Home Assistant.")}`;
+    }
+    if (sc.type === "thermostat") {
+      const climates = sc.climates || [];
+      const sensors = sc.sensors || [];
+      return `<p class="hint">Each thermostat: where it is and where it's set, its mode and what it's doing, humidity and
+          the fan when it has them, and the last 24 hours. Any thermostat in Home Assistant works (a <code>climate</code>
+          entity), up to ${chips.MAX_CLIMATES}. A thermostat chip opens the first of these screens that lists it.</p>
+        ${this.titleBox(sc)}
+        <h3>Thermostats</h3>
+        <div class="list">${climates.map((e, i) => this.memberRow(`${sc.id}.climates`, e, i)).join("")}</div>
+        ${climates.length ? "" : this.missing("Add a thermostat: the screen shows nothing without one.")}
+        ${climates.length < chips.MAX_CLIMATES ? `<div class="add">${this.searchBox(`${sc.id}.climates`, "Add a thermostat")}</div>` : ""}
+        <h3>Other readings</h3>
+        <p class="hint">Optional: temperatures to show beside them, such as other rooms or outside.</p>
+        <div class="list">${sensors.map((e, i) => this.memberRow(`${sc.id}.sensors`, e, i)).join("")}</div>
+        ${sensors.length < chips.MAX_READINGS ? `<div class="add">${this.searchBox(`${sc.id}.sensors`, "Add a sensor")}</div>` : ""}`;
+    }
+    if (sc.type === "air_quality") {
+      const sensors = sc.sensors || [];
+      return `<p class="hint">A tile per sensor: its value, a colour for how good that is (where Home Assistant knows
+          what the sensor measures, in a unit with known levels), and the last 24 hours. Up to ${chips.MAX_AIR_SENSORS}
+          fit the screen. Any sensor works; the air quality sensors Home Assistant knows about are suggested first.</p>
+        ${this.titleBox(sc)}
+        <div class="list">${sensors.map((e, i) => this.memberRow(`${sc.id}.sensors`, e, i)).join("")}</div>
+        ${sensors.length ? "" : this.missing("Add a sensor: the screen shows nothing without one.")}
+        ${sensors.length < chips.MAX_AIR_SENSORS ? `<div class="add">${this.searchBox(`${sc.id}.sensors`, "Add a sensor")}</div>`
+          : `<p class="hint">That's ${chips.MAX_AIR_SENSORS}, as many as fit.</p>`}`;
+    }
+    if (sc.type === "cameras") {
       return `<p class="hint">The cameras the Cameras chip opens, in grid order: left to right, top row first.</p>
+        ${ids.some((e) => e.startsWith("camera.")) ? "" : this.missing("No camera entities found in Home Assistant.")}
         <div class="grid">${[0, 1, 2, 3, 4, 5].map((i) => `<div class="slot ${s.cameras[i] ? "" : "free"}">${
           s.cameras[i] ? esc(chips.defaultName(this._hass, s.cameras[i]).replace(/^Camera\s*[-:]\s*/i, "")) : "empty"}</div>`).join("")}</div>
         ${s.cameras.length > 6 ? `<p class="hint">Only the first six fit the grid; Left and Right in the live view reach the rest.</p>` : ""}
         <div class="list">${s.cameras.map((e, i) => this.memberRow("cameras", e, i)).join("")}</div>
         <div class="add">${this.searchBox("cameras", "Add a camera")}</div>`;
     }
-    if (tab === "tank") {
-      return `<p class="hint">The Apex readings on the tank chip, one column each, in this order. They come from the
+    if (sc.type === "tank") {
+      return `<p class="hint">The Tank screen shows every Apex probe, from the
           <a href="${APEX_URL}" target="_blank" rel="noreferrer">Neptune Apex integration</a>${s.tank.length ? ""
-          : ", which isn't sending any yet: install it, or add its probes below"}.</p>
+          : ", which isn't sending any yet: install it, or add its probes below"}. This list sets the tank chip's
+          columns, in order.</p>
         <div class="list">${s.tank.map((e, i) => this.memberRow("tank", e, i)).join("")}</div>
         <div class="add">${this.searchBox("tank", "Add an Apex probe")}</div>`;
     }
-    return `<p class="hint">Optional. Where each inverter sits on the roof, as JSON:
+    const envoy = Object.values(h.entities || {}).some((e) => e.platform === "enphase_envoy");
+    return `<p class="hint">The solar screen is built for Enphase: it reads an Enphase Envoy through Home Assistant's
+        <a href="${ENVOY_URL}" target="_blank" rel="noreferrer">Enphase Envoy integration</a>, and battery charge and
+        discharge sensors by name.</p>
+      ${envoy ? "" : this.missing("No Enphase Envoy found in Home Assistant.")}
+      <p class="hint">Optional: where each microinverter sits on the roof, as JSON. <code>id</code> is the serial in its
+        <code>sensor.inverter_&lt;serial&gt;</code> name:
         <code>{"arrays": [{"name": "Array 1", "panels": [{"id": "inverter serial", "x": 0, "y": 0, "w": 2, "h": 1}]}]}</code>.
         Empty shows the panels in rows.</p>
       <textarea data-action="solar" data-focus="solar" spellcheck="false" rows="10">${esc(s.solarText)}</textarea>
@@ -252,36 +364,49 @@ class TvPanelSettings extends HTMLElement {
     const isEntity = c.type === "entity";
     const name = isEntity ? chips.defaultName(this._hass, c.entity) : GROUP_NAMES[c.type];
     const sub = isEntity ? c.entity : c.type === "cameras" ? `${this.s.cameras.length} cameras` : `${this.s.tank.length} readings`;
-    return `<div class="item" draggable="true" data-list="chips" data-index="${i}">
+    return `<div class="item ${this.editing === i ? "open" : ""}" draggable="true" data-list="chips" data-index="${i}">
       <span class="handle" title="Drag to move">⋮⋮</span>
       <ha-icon icon="${esc(p.icon)}" style="color:${ROW_TONES[p.tone]}"></ha-icon>
       <div class="name"><div>${esc(name)}</div><div class="sub">${esc(sub)}</div></div>
       ${isEntity ? `<div class="value" data-live="${esc(c.entity)}">${esc(chips.stateText(this._hass, c.entity))}</div>` : ""}
-      ${c.type === "tank" ? "" : `<input class="label" data-action="label" data-index="${i}" data-focus="label-${i}"
-        placeholder="${esc(p.label || name)}" value="${esc(c.label || "")}" aria-label="Label on the TV">`}
-      ${this.arrows("chips", i, this.s.chips.length)}
-    </div>
-    <div class="ok-line" data-list="chips" data-index="${i}">
-      <span class="sub" id="ok-say-${i}">${esc(chips.describeOk(this._hass, c))}</span>
-      <button class="link" data-action="ok-edit" data-index="${i}">${this.editing === i ? "Done" : "Change"}</button>
+      <div class="controls">
+        ${c.type === "tank" ? "" : `<input class="label" data-action="label" data-index="${i}" data-focus="label-${i}"
+          placeholder="${esc(p.label || name)}" value="${esc(c.label || "")}" aria-label="Label on the TV">`}
+        ${this.okButton(c, i)}
+        ${this.arrows("chips", i, this.s.chips.length)}
+      </div>
     </div>
     ${this.editing === i ? this.okEditor(c, i) : ""}`;
   }
 
+  /** What OK does, as an icon beside move and remove; it opens the editor, attached under the row. */
+  okButton(c, i) {
+    const look = chips.okLook(this._hass, c, this.screens());
+    const say = chips.describeOk(this._hass, c, this.screens());
+    const open = this.editing === i;
+    return `<button class="icon ok ${look.none ? "none" : ""} ${look.choose ? "choose" : ""} ${open ? "open" : ""}"
+      data-action="ok-edit" data-index="${i}" id="ok-button-${i}" title="${esc(say)}. Click to change."
+      aria-label="${esc(say)}. Change what OK does" aria-expanded="${open}"><ha-icon icon="${look.icon}"></ha-icon>${
+      look.twice ? `<span class="twice">2×</span>` : ""}</button>`;
+  }
+
   okEditor(c, i) {
     const ok = c.ok || { action: "default" };
-    const def = chips.defaultChoice(this._hass, c);
+    const def = chips.defaultChoice(this._hass, c, this.screens());
     const opt = (v, text) => `<option value="${v}" ${ok.action === v ? "selected" : ""}>${esc(text)}</option>`;
     const states = Object.keys(this._hass.states);
     const pick = (list, value, attrs) => `<select ${attrs}>${value ? "" : `<option value="">Choose…</option>`}${list.map((e) =>
       `<option value="${esc(e)}" ${e === value ? "selected" : ""}>${esc(chips.defaultName(this._hass, e))} (${esc(e)})</option>`).join("")}</select>`;
     let fields = "";
-    if (ok.action === "page") {
-      const pages = [["weather", "Weather"], ["solar", "Solar"], ["tank", "Tank"], ["cameras", "Camera grid"]];
+    if (ok.action === "screen") {
+      const screens = chips.screenChoices(this.screens());
       const cams = states.filter((e) => e.startsWith("camera.")).sort();
-      const now = ok.page === "camera" ? `camera:${ok.camera}` : ok.page;
-      fields = `<label>Page <select data-action="ok-page" data-index="${i}">${now ? "" : `<option value="">Choose…</option>`}
-        ${pages.map(([v, t]) => `<option value="${v}" ${now === v ? "selected" : ""}>${t}</option>`).join("")}
+      const now = ok.screen === "camera" ? `camera:${ok.camera}` : ok.screen;
+      // A screen just removed (or a camera gone) matches no option: say Choose…, or the browser shows the first option
+      // as chosen, and picking that one changes nothing.
+      const known = screens.some(([v]) => v === now) || cams.some((e) => now === `camera:${e}`);
+      fields = `<label>Screen <select data-action="ok-screen" data-index="${i}">${known ? "" : `<option value="" selected>Choose…</option>`}
+        ${screens.map(([v, t]) => `<option value="${esc(v)}" ${now === v ? "selected" : ""}>${esc(t)}</option>`).join("")}
         ${cams.map((e) => `<option value="camera:${esc(e)}" ${now === "camera:" + e ? "selected" : ""}>${esc(chips.defaultName(this._hass, e))}, full screen</option>`).join("")}
       </select></label>`;
     } else if (ok.action === "toggle") {
@@ -306,8 +431,9 @@ class TvPanelSettings extends HTMLElement {
       ? `<label class="check"><input type="checkbox" data-action="ok-confirm" data-index="${i}" ${ok.confirm ? "checked" : ""}>
           Press OK twice (the TV asks first)</label>` : "";
     return `<div class="ok-editor">
+      <div class="say" id="ok-say-${i}">${esc(chips.describeOk(this._hass, c, this.screens()))}</div>
       <label>On OK <select data-action="ok-action" data-index="${i}">
-        ${opt("default", def)}${opt("none", "Do nothing")}${opt("page", "Open a page")}
+        ${opt("default", def)}${opt("none", "Do nothing")}${opt("screen", "Open a screen")}
         ${opt("toggle", "Toggle something")}${opt("run", "Run a script or scene")}${opt("perform", "Perform an action")}
       </select></label>
       ${fields}${confirm}
@@ -320,7 +446,7 @@ class TvPanelSettings extends HTMLElement {
       <span class="handle" title="Drag to move">⋮⋮</span>
       <div class="name"><div>${esc(chips.defaultName(this._hass, e))}</div><div class="sub">${esc(e)}</div></div>
       <div class="value" data-live="${esc(e)}">${esc(chips.stateText(this._hass, e))}</div>
-      ${this.arrows(list, i, this.s[list].length)}
+      ${this.arrows(list, i, this.listGet(list).length)}
     </div>`;
   }
 
@@ -331,27 +457,39 @@ class TvPanelSettings extends HTMLElement {
   }
 
   searchBox(list, placeholder) {
-    return `<div class="search"><input type="search" data-action="search" data-list="${list}" data-focus="search-${list}"
-      placeholder="${esc(placeholder)}" value="${esc(this.queries[list])}"><div class="results" id="results-${list}"></div></div>`;
+    return `<div class="search"><input type="search" data-action="search" data-list="${esc(list)}" data-focus="search-${esc(list)}"
+      placeholder="${esc(placeholder)}" value="${esc(this.queries[list] || "")}"><div class="results" id="results-${esc(list)}"
+      data-list="${esc(list)}"></div></div>`;
   }
 
   results(list) {
-    const q = this.queries[list];
-    if (!q.trim() && list === "chips") return [];
-    if (list === "chips") return chips.search(this._hass, q, this.s.chips.filter((c) => c.type === "entity").map((c) => c.entity));
+    const q = this.queries[list] || "";
+    if (list === "chips") {
+      return q.trim() ? chips.search(this._hass, q, this.s.chips.filter((c) => c.type === "entity").map((c) => c.entity)) : [];
+    }
     if (list === "cameras") return chips.search(this._hass, q, this.s.cameras, "camera");
-    return chips.search(this._hass, q, this.s.tank, null, chips.isProbe);
+    if (list === "tank") return chips.search(this._hass, q, this.s.tank, null, chips.isProbe);
+    const [id, key] = list.split(".");
+    const have = this.listGet(list);
+    if (key === "climates") return chips.search(this._hass, q, have, "climate");
+    // Air quality: with nothing typed, the sensors Home Assistant knows are about the air, by place.
+    if (this.screen(id)?.type === "air_quality" && !q.trim()) return chips.airSuggestions(this._hass, have);
+    return chips.search(this._hass, q, have, "sensor");
   }
 
   renderResults(list) {
     const box = this.shadowRoot.getElementById(`results-${list}`);
     if (!box) return;
+    const query = this.queries[list] || "";
     const focused = this.shadowRoot.activeElement?.dataset?.focus === `search-${list}`;
-    const found = focused || this.queries[list] ? this.results(list) : [];
-    box.innerHTML = found.map((f) => `<button class="result" data-action="add" data-list="${list}" data-id="${esc(f.entity_id)}">
-      <span class="name"><span>${esc(f.name)}</span><span class="sub">${esc(f.entity_id)}</span></span>
-      <span class="value">${esc(f.value)}</span></button>`).join("")
-      || (this.queries[list].trim() ? `<div class="sub pad">Nothing matches.</div>` : "");
+    const found = focused || query ? this.results(list) : [];
+    let group = null;
+    box.innerHTML = found.map((f) => {
+      const head = f.group !== undefined && f.group !== group ? `<div class="group">${esc((group = f.group) || "Elsewhere")}</div>` : "";
+      return `${head}<button class="result" data-action="add" data-list="${esc(list)}" data-id="${esc(f.entity_id)}">
+        <span class="name"><span>${esc(f.name)}</span><span class="sub">${esc(f.entity_id)}</span></span>
+        <span class="value">${esc(f.value)}</span></button>`;
+    }).join("") || (query.trim() ? `<div class="sub pad">Nothing matches.</div>` : "");
   }
 
   rowSwitch() {
@@ -411,17 +549,17 @@ class TvPanelSettings extends HTMLElement {
     const chip = this.s.chips[i];
     const ok = { ...(chip.ok || { action: "default" }) };
     if (action === "ok-action") {
-      chip.ok = chips.switchOk(this._hass, chip, el.value);
+      chip.ok = chips.switchOk(this._hass, chip, el.value, this.screens());
       delete chip.dataError;
       this.changed();
       return;
     }
-    if (action === "ok-page") {
+    if (action === "ok-screen") {
       delete ok.camera;
       if (el.value.startsWith("camera:")) {
-        ok.page = "camera";
+        ok.screen = "camera";
         ok.camera = el.value.slice(7);
-      } else ok.page = el.value;
+      } else ok.screen = el.value;
     } else if (action === "ok-entity") ok.entity = el.value;
     else if (action === "ok-confirm") ok.confirm = el.checked;
     else if (action === "ok-perform") ok.perform_action = el.value.trim();
@@ -447,9 +585,16 @@ class TvPanelSettings extends HTMLElement {
       }
     }
     chip.ok = ok;
-    const say = this.shadowRoot.getElementById(`ok-say-${i}`);
-    if (say) say.textContent = chips.describeOk(this._hass, chip);
+    this.sayOk(chip, i);
     this.changed(false);
+  }
+
+  /** After a change in the editor: its sentence, and the row's OK button, without redrawing what's being typed in. */
+  sayOk(chip, i) {
+    const say = this.shadowRoot.getElementById(`ok-say-${i}`);
+    if (say) say.textContent = chips.describeOk(this._hass, chip, this.screens());
+    const button = this.shadowRoot.getElementById(`ok-button-${i}`);
+    if (button) button.outerHTML = this.okButton(chip, i);
   }
 
   showTab(tab, focus = false) {
@@ -501,12 +646,23 @@ class TvPanelSettings extends HTMLElement {
       else if (action === "revert") this.load(this.entryId);
       else if (action === "up" || action === "down") {
         this.editing = null;
-        this.s[list] = chips.move(this.s[list], i, action === "up" ? i - 1 : i + 1);
+        this.listSet(list, chips.move(this.listGet(list), i, action === "up" ? i - 1 : i + 1));
         this.changed();
       } else if (action === "remove") {
         this.editing = null;
-        this.s[list] = this.s[list].filter((_, j) => j !== i);
+        this.listSet(list, this.listGet(list).filter((_, j) => j !== i));
         this.changed();
+      } else if (action === "remove-screen") {
+        const id = b.dataset.screen;
+        const inWay = chips.chipsOpening(this._hass, this.s.chips, id);
+        const title = chips.screenTitle(this.screen(id));
+        this.s.screens = this.screens().filter((x) => x.id !== id);
+        this.changed();
+        if (inWay.length) {
+          // Save refuses too; saying it now saves a surprise.
+          this.status = `Removed ${title}, but OK on ${inWay.join(", ")} opens it: change that before you save.`;
+          this.renderStatus();
+        }
       } else if (action === "add-group") {
         this.s.chips.push({ type: b.dataset.type });
         this.changed();
@@ -519,7 +675,7 @@ class TvPanelSettings extends HTMLElement {
             if (!this.s[group].includes(id)) this.s[group].push(id);
             if (!this.s.chips.some((c) => c.type === group)) this.s.chips.push({ type: group });
           } else this.s.chips.push({ type: "entity", entity: id });
-        } else this.s[list].push(id);
+        } else if (!this.listGet(list).includes(id)) this.listSet(list, [...this.listGet(list), id]);
         this.queries[list] = "";
         this.changed();
       }
@@ -543,6 +699,13 @@ class TvPanelSettings extends HTMLElement {
             this.renderStatus();
             this.renderPreview(); // puts the checkbox back to the switch's real state
           });
+      } else if (action === "screen-title") {
+        const sc = this.screen(el.dataset.screen);
+        if (!sc) return;
+        sc.title = el.value;
+        const tab = root.getElementById(`tab-${sc.id}`);
+        if (tab) tab.textContent = chips.screenTitle(sc);
+        this.changed(false);
       } else if (action === "solar") {
         this.s.solarText = el.value;
         const r = chips.parseSolar(el.value);
@@ -554,7 +717,7 @@ class TvPanelSettings extends HTMLElement {
       const t = ev.target.closest?.("[role=tab]");
       if (!t || !["ArrowLeft", "ArrowRight", "Home", "End"].includes(ev.key)) return;
       ev.preventDefault();
-      const ids = TABS.map(([id]) => id);
+      const ids = this.screens().map((x) => x.id);
       const at = ids.indexOf(t.dataset.tab);
       const next = ev.key === "Home" ? 0 : ev.key === "End" ? ids.length - 1
         : (at + (ev.key === "ArrowRight" ? 1 : ids.length - 1)) % ids.length;
@@ -564,6 +727,13 @@ class TvPanelSettings extends HTMLElement {
       if (ev.target.dataset?.action === "search") this.renderResults(ev.target.dataset.list);
     });
     root.addEventListener("change", (ev) => {
+      if (ev.target.dataset?.action === "add-screen" && ev.target.value) {
+        const sc = chips.newScreen(this.screens(), ev.target.value);
+        this.s.screens = [...this.screens(), sc];
+        this.changed();
+        this.showTab(sc.id, true);
+        return;
+      }
       if (ev.target.dataset?.action === "tv") {
         if (this.dirty && !confirm("Drop the changes you haven't saved?")) {
           ev.target.value = this.entryId;
@@ -592,7 +762,7 @@ class TvPanelSettings extends HTMLElement {
       const item = ev.target.closest?.(".item");
       if (!this.drag || !item || item.dataset.list !== this.drag.list) return;
       ev.preventDefault();
-      this.s[this.drag.list] = chips.move(this.s[this.drag.list], this.drag.from, Number(item.dataset.index));
+      this.listSet(this.drag.list, chips.move(this.listGet(this.drag.list), this.drag.from, Number(item.dataset.index)));
       this.drag = null;
       this.editing = null;
       this.changed();
@@ -621,7 +791,7 @@ const CSS = `
   .toggle input { width: 18px; height: 18px; accent-color: var(--primary-color); }
   .hint, .sub { color: var(--secondary-text-color); font-size: 13px; }
   .hint { margin: 0 0 12px; }
-  code { font-size: 12px; word-break: break-all; }
+  code { font-size: 12px; overflow-wrap: anywhere; }
   a { color: var(--primary-color); }
   .note { background: rgba(255, 201, 74, 0.15); border: 1px solid rgba(255, 201, 74, 0.5); border-radius: 8px; padding: 10px 12px;
     margin-bottom: 16px; font-size: 14px; }
@@ -638,7 +808,18 @@ const CSS = `
   .pin .hint:empty { display: none; }
   .row { position: absolute; left: 0; top: 0; display: flex; gap: 10px; align-items: stretch; min-height: 52px;
     width: max-content; transform-origin: left top; }
-  .tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--divider-color); margin: -4px 0 14px; }
+  /* The screens' tabs, and Add a screen at the end of them. */
+  .tabbar { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 4px 12px; border-bottom: 1px solid var(--divider-color);
+    margin: 4px 0 14px; }
+  .tabs { display: flex; flex-wrap: wrap; gap: 4px; flex: 1; min-width: 0; }
+  .add-screen { margin-bottom: 6px; }
+  h3 { font-size: 15px; font-weight: 500; margin: 16px 0 6px; }
+  .missing { color: var(--warning-color, #ffa600); font-size: 14px; margin: 0 0 12px; }
+  .remove { display: flex; justify-content: flex-end; margin-top: 12px; }
+  .title-box { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; margin-bottom: 4px; }
+  .title-box label { display: flex; align-items: center; gap: 8px; font-size: 14px; }
+  .results .group { font-size: 12px; font-weight: 500; color: var(--secondary-text-color); padding: 8px 8px 2px;
+    text-transform: uppercase; letter-spacing: 0.04em; }
   .tabs button { border: none; border-bottom: 2px solid transparent; border-radius: 0; padding: 8px 14px; font-size: 15px;
     color: var(--secondary-text-color); margin-bottom: -1px; }
   .tabs button[aria-selected="true"] { color: var(--primary-color); border-bottom-color: var(--primary-color); }
@@ -649,10 +830,20 @@ const CSS = `
   .chip .col .v { font-size: 15px; }
   .tv .sub { color: rgba(255,255,255,0.6); align-self: center; }
   .list { display: flex; flex-direction: column; gap: 6px; }
-  .ok-line { display: flex; align-items: center; gap: 8px; margin: -4px 0 4px 34px; }
   button.link { border: none; padding: 0 4px; color: var(--primary-color); font-size: 13px; }
-  .ok-editor { display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: flex-end; margin: 0 0 8px 34px; padding: 10px 12px;
-    border-left: 3px solid var(--primary-color); background: var(--secondary-background-color); border-radius: 0 8px 8px 0; }
+  /* What OK does, beside move and remove. Dim when it does nothing; amber when it still needs a choice. */
+  button.ok { position: relative; display: inline-flex; align-items: center; justify-content: center; }
+  button.ok ha-icon { --mdc-icon-size: 18px; width: 18px; height: 18px; display: inline-flex; }
+  button.ok.none ha-icon { opacity: 0.45; }
+  button.ok.choose { border-color: var(--warning-color, #ffa600); color: var(--warning-color, #ffa600); }
+  button.ok.open { border-color: var(--primary-color); color: var(--primary-color); }
+  button.ok .twice { position: absolute; right: -6px; top: -7px; font-size: 10px; line-height: 1; padding: 2px 3px;
+    border-radius: 6px; background: var(--primary-color); color: var(--text-primary-color, #fff); }
+  /* The editor hangs under its row, as one card with it. */
+  .item.open { border-radius: 8px 8px 0 0; }
+  .ok-editor { display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: flex-end; margin: -6px 0 0; padding: 4px 12px 12px 42px;
+    background: var(--secondary-background-color); border-radius: 0 0 8px 8px; border-top: 1px solid var(--divider-color); }
+  .ok-editor .say { flex-basis: 100%; padding-top: 6px; font-weight: 500; }
   .ok-editor label { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: var(--secondary-text-color); }
   .ok-editor label.check { flex-direction: row; align-items: center; color: var(--primary-text-color); }
   .ok-editor label.wide, .ok-editor .hint, .ok-editor .error { flex-basis: 100%; }
@@ -669,6 +860,7 @@ const CSS = `
   input, textarea { font: inherit; color: var(--primary-text-color); background: var(--card-background-color);
     border: 1px solid var(--divider-color); border-radius: 6px; padding: 6px 8px; box-sizing: border-box; }
   input.label { width: 150px; }
+  .controls { display: flex; align-items: center; gap: 10px; }
   textarea { width: 100%; font-family: monospace; font-size: 13px; }
   .error { color: var(--error-color, #db4437); font-size: 13px; min-height: 1em; margin-top: 4px; }
   button { font: inherit; cursor: pointer; border-radius: 6px; padding: 6px 12px; border: 1px solid var(--divider-color);
@@ -695,8 +887,11 @@ const CSS = `
     .pin { padding: 8px 8px 0; }
     .pin .card { padding: 10px 12px; }
     .tv { padding: 10px; }
-    input.label { width: 100px; }
     .toolbar button.secondary { display: none; }
+    /* The name and value keep the first line; the label and the buttons go on a second, under the name. */
+    .item:has(.controls) { flex-wrap: wrap; row-gap: 6px; }
+    .item .controls { flex-basis: 100%; padding-left: 54px; box-sizing: border-box; }
+    .item .controls input.label { flex: 1; width: auto; min-width: 0; }
   }
 `;
 

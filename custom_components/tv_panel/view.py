@@ -2,6 +2,7 @@
 
 GET /api/tv_panel/config       the TV's settings
 GET /api/tv_panel/data/<name>  what it draws: the chip row ("chips") and the "cameras", "tank" and "solar" screens
+GET /api/tv_panel/data/<type>?screen=<id>  one of its "thermostat" or "air_quality" screens
 """
 
 from __future__ import annotations
@@ -9,6 +10,7 @@ from __future__ import annotations
 from http import HTTPStatus
 from ipaddress import ip_address
 import logging
+from typing import Any
 
 from aiohttp import web
 from homeassistant.auth.const import GROUP_ID_USER
@@ -48,6 +50,17 @@ def _keep_address(hass: HomeAssistant, entry: ConfigEntry, remote: str | None) -
     hass.config_entries.async_update_entry(entry, data={**entry.data, CONF_HOST: remote})
 
 
+def _for_tv(ok: dict[str, Any]) -> dict[str, Any]:
+    """A chip's OK as the TV reads it. Apps before 0.7.0 open a chip only when its OK says "page" (and which, in
+    "page"), so a built-in screen goes as both: the one place the old word stays. A screen those apps don't have
+    goes as "none" to them, so OK only fires the event; 0.7.0 reads "screen" first."""
+    if ok["action"] != "screen":
+        return ok
+    if ok["screen"] in (*model.BUILT_IN_SCREENS, model.CAMERA):
+        return ok | {"action": "page", "page": ok["screen"]}
+    return {"action": "none", "screen": ok["screen"]}
+
+
 class TvPanelConfigView(HomeAssistantView):
     """Never saved: every setting is null, and the app keeps using the labels and helpers it used before. "entities"
     and "camera_order" are what app 0.2.0 reads. The TV asks every few seconds, so this is also where its address is
@@ -66,9 +79,13 @@ class TvPanelConfigView(HomeAssistantView):
         _keep_address(hass, entry, request.remote)
         row = entry.runtime_data.row
         if not model.saved(entry.options):
-            return self.json({k: None for k in (*model.KEYS, "entities", "camera_order")} | {"row": row})
+            never = {k: None for k in (*model.KEYS, "entities", "camera_order")}
+            return self.json(never | {"row": row, "screens": model.settings(hass, entry.options)["screens"]})
         s = model.settings(hass, entry.options)
-        chips = [{k: v for k, v in c.items() if k != "ok"} | {"ok": model.resolve_ok(hass, c)} for c in s["chips"]]
+        chips = [
+            {k: v for k, v in c.items() if k != "ok"} | {"ok": _for_tv(model.resolve_ok(hass, c, s["screens"]))}
+            for c in s["chips"]
+        ]
         return self.json(s | {"chips": chips, "entities": model.flatten(s), "camera_order": s["cameras"], "row": row})
 
 
@@ -90,9 +107,19 @@ class TvPanelDataView(HomeAssistantView):
         if entry is None:
             return self.json_message(NOT_A_TV, HTTPStatus.NOT_FOUND)
         build = data.BUILDERS.get(name)
-        if build is None:
-            return self.json_message(f"No {name}: there's {', '.join(data.BUILDERS)}", HTTPStatus.NOT_FOUND)
+        for_screen = data.SCREEN_BUILDERS.get(name)
+        if build is None and for_screen is None:
+            names = ", ".join((*data.BUILDERS, *data.SCREEN_BUILDERS))
+            return self.json_message(f"No {name}: there's {names}", HTTPStatus.NOT_FOUND)
+        screen = None
+        if for_screen is not None:
+            # Only a screen of this TV's own, of that type.
+            want = request.query.get("screen")
+            screens = model.settings(hass, entry.options)["screens"]
+            screen = next((s for s in screens if s["id"] == want and s["type"] == name), None)
+            if screen is None:
+                return self.json_message(f"{entry.title} has no {name} screen {want}", HTTPStatus.NOT_FOUND)
         if user.is_admin:
             await hass.auth.async_update_user(user, group_ids=[GROUP_ID_USER])
             _LOGGER.info("%s: the TV's user is a normal user now, as the app no longer needs admin", entry.title)
-        return self.json(build(hass, entry))
+        return self.json(build(hass, entry) if build is not None else for_screen(hass, entry, screen))

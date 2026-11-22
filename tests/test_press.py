@@ -95,7 +95,7 @@ async def test_performing_an_action(hass: HomeAssistant, hass_client_no_auth) ->
     assert calls[0].data["entity_id"] == ["light.den"]
 
 
-async def test_a_page_is_opened_by_the_tv_but_the_press_is_still_an_event(
+async def test_a_screen_is_opened_by_the_tv_but_the_press_is_still_an_event(
     hass: HomeAssistant, hass_client_no_auth
 ) -> None:
     entry, token = await paired_tv(hass, CHIPS)
@@ -105,12 +105,12 @@ async def test_a_page_is_opened_by_the_tv_but_the_press_is_still_an_event(
     body = await (await _press(hass_client_no_auth, token, "apex")).json()
     await hass.async_block_till_done()
 
-    assert body == {"ok": True, "page": "tank"}
+    assert body == {"ok": True, "screen": "tank"}
     assert events[0].data == {
         "entry_id": entry.entry_id,
         "tv": "BRAVIA",
         "chip": "apex",
-        "action": "page",
+        "action": "screen",
     }
     assert events[0].context.user_id == entry.data["user_id"]
 
@@ -168,7 +168,7 @@ async def test_a_long_action_keeps_going_and_the_tv_hears_at_once(hass: HomeAssi
 
 
 async def test_a_press_only_for_the_event_does_nothing_else(hass: HomeAssistant, hass_client_no_auth) -> None:
-    """The TV opened a page (or the chip does nothing) and only reports the press. Even if the chip was changed to a
+    """The TV opened a screen (or the chip does nothing) and only reports the press. Even if the chip was changed to a
     toggle a moment ago, and the TV hasn't caught up, nothing is toggled."""
     hass.states.async_set("cover.garage_door", "closed", {"device_class": "garage"})
     calls = _record(hass, "cover", "toggle")
@@ -179,14 +179,30 @@ async def test_a_press_only_for_the_event_does_nothing_else(hass: HomeAssistant,
 
     r = await client.post(
         "/api/tv_panel/press",
-        json={"key": "cover.garage_door", "event_only": True, "action": "page"},
+        json={"key": "cover.garage_door", "event_only": True, "action": "screen"},
         headers={"Authorization": f"Bearer {token}"},
     )
     await hass.async_block_till_done()
 
     assert await r.json() == {"ok": True}
     assert calls == []
-    assert events[0].data["action"] == "page"
+    assert events[0].data["action"] == "screen"
+
+
+async def test_an_older_app_says_page_and_the_event_says_screen(hass: HomeAssistant, hass_client_no_auth) -> None:
+    """Apps before 0.7.0 report a screen they opened as "page". Automations see one word for it."""
+    _, token = await paired_tv(hass, CHIPS)
+    events = []
+    hass.bus.async_listen("tv_panel_chip_pressed", events.append)
+    client = await hass_client_no_auth()
+    for action in ("page", "none"):
+        await client.post(
+            "/api/tv_panel/press",
+            json={"key": "apex", "event_only": True, "action": action},
+            headers={"Authorization": f"Bearer {token}"},
+        )
+    await hass.async_block_till_done()
+    assert [e.data["action"] for e in events] == ["screen", "none"]
 
 
 async def test_toggle_words_follow_what_toggle_does(hass: HomeAssistant, hass_client_no_auth) -> None:

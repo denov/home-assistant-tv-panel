@@ -178,6 +178,84 @@ export function search(hass, query, exclude, domain = null, keep = null) {
     .map((r) => ({ ...r, value: stateText(hass, r.entity_id) }));
 }
 
+// ---- the TV's screens (model.py's screens: change both together) ----------------------------------------------
+
+/** Every kind of screen: its title, and whether it's one of the four built in (at most one each, its type its id). */
+export const SCREEN_TYPES = {
+  weather: { title: "Weather" },
+  solar: { title: "Solar" },
+  tank: { title: "Tank" },
+  cameras: { title: "Cameras" },
+  thermostat: { title: "Thermostat", extra: true },
+  air_quality: { title: "Air quality", extra: true },
+};
+export const DEFAULT_SCREENS = ["weather", "solar", "tank", "cameras"].map((t) => ({ id: t, type: t }));
+/** model.py's MAX_CLIMATES, MAX_AIR_SENSORS and MAX_READINGS. */
+export const MAX_CLIMATES = 4;
+export const MAX_AIR_SENSORS = 12;
+export const MAX_READINGS = 8;
+/** The built-in screens' links, which apps before 0.7.0 know too (tv_link.py). */
+const OLD_LINKS = { weather: "weather", solar: "solar", tank: "apex", cameras: "cameras" };
+/** Sensors an air quality screen suggests with nothing typed; search finds any other sensor, such as humidity. */
+export const AIR_CLASSES = ["aqi", "pm1", "pm25", "pm10", "carbon_dioxide", "carbon_monoxide", "volatile_organic_compounds",
+  "volatile_organic_compounds_parts", "nitrogen_dioxide", "nitrogen_monoxide", "ozone", "sulphur_dioxide"];
+
+/** The settings' screens: without a list (saved before 0.7.0), the built-in four. */
+export const screensOf = (s) => (Array.isArray(s?.screens) ? s.screens : DEFAULT_SCREENS);
+
+export const screenTitle = (s) => (s.title && String(s.title).trim()) || SCREEN_TYPES[s.type]?.title || s.id;
+
+/** tvpanel://weather for a built-in screen, tvpanel://screen/<id> for the rest. */
+export const screenLink = (s) => (OLD_LINKS[s.id] ? `tvpanel://${OLD_LINKS[s.id]}` : `tvpanel://screen/${s.id}`);
+
+/** The kinds of screen that can still be added: a built-in one only when it isn't there. As [type, title]. */
+export function addableTypes(screens) {
+  return Object.entries(SCREEN_TYPES).filter(([t, info]) => info.extra || !screens.some((s) => s.type === t))
+    .map(([t, info]) => [t, info.title]);
+}
+
+/** A new screen of this type. Its id is made once, here, from its title ("thermostat", "thermostat_2"), and never
+ * changes: chips, tv_panel.show and voice links use it. */
+export function newScreen(screens, type) {
+  if (!SCREEN_TYPES[type].extra) return { id: type, type };
+  const title = SCREEN_TYPES[type].title;
+  const base = title.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "");
+  let id = base;
+  for (let n = 2; screens.some((s) => s.id === id); n++) id = `${base}_${n}`;
+  return type === "thermostat" ? { id, type, title, climates: [], sensors: [] } : { id, type, title, sensors: [] };
+}
+
+/** The OK editor's screens, as [id, title]: the camera grid by that name. */
+export function screenChoices(screens) {
+  return screens.map((s) => [s.id, s.type === "cameras" ? "Camera grid" : screenTitle(s)]);
+}
+
+/** The chips whose own OK opens this screen, by the name the page shows them by: in the way of removing it. */
+export function chipsOpening(hass, list, id) {
+  return list.filter((c) => c.ok?.action === "screen" && c.ok.screen === id)
+    .map((c) => (c.label && c.label.trim()) || (c.type === "entity" ? defaultName(hass, c.entity) : SCREEN_TYPES[c.type].title));
+}
+
+/** Where an entity is: its area, else its device's area, else its device. "" for none. */
+function placeOf(hass, entityId) {
+  const e = hass.entities?.[entityId];
+  const d = e?.device_id && hass.devices?.[e.device_id];
+  const area = e?.area_id || d?.area_id;
+  return (area && hass.areas?.[area]?.name) || (d ? d.name_by_user || d.name || "" : "");
+}
+
+/** Sensors Home Assistant knows to be about the air, not listed yet, by place then name (each with its group). */
+export function airSuggestions(hass, exclude) {
+  const skip = new Set(exclude);
+  return Object.values(hass.states)
+    .filter((s) => s.entity_id.startsWith("sensor.") && !skip.has(s.entity_id))
+    .filter((s) => AIR_CLASSES.includes(s.attributes?.device_class))
+    .map((s) => ({ entity_id: s.entity_id, name: friendly(hass, s.entity_id) || s.entity_id, group: placeOf(hass, s.entity_id) }))
+    .sort((a, b) => a.group.localeCompare(b.group) || a.name.localeCompare(b.name))
+    .slice(0, 40)
+    .map((r) => ({ ...r, value: stateText(hass, r.entity_id) }));
+}
+
 // ---- what OK does (model.py's default_ok / resolve_ok: change both together) ----------------------------------
 
 /** What "toggle" works on: model.py's TOGGLE_DOMAINS (a test checks they match). */
@@ -197,24 +275,36 @@ const asksTwice = (hass, id) => {
 const isSolar = (hass, id) => ["power", "energy"].includes(hass.states[id]?.attributes?.device_class)
   && /production|solar|pv/.test(id);
 
-/** What OK does unless it's set: the chip's page, a garage door's, gate's or door's toggle (pressed twice), or nothing. */
-export function defaultOk(hass, chip) {
-  if (chip.type === "cameras") return { action: "page", page: "cameras" };
-  if (chip.type === "tank") return { action: "page", page: "tank" };
+/**
+ * What OK does unless it's set: the chip's screen, a garage door's, gate's or door's toggle (pressed twice), or
+ * nothing. A thermostat opens the first thermostat screen that lists it, a sensor the first air quality screen that
+ * lists it. A screen that was removed is no one's default.
+ */
+export function defaultOk(hass, chip, screens = DEFAULT_SCREENS) {
+  const screen = (id) => (screens.some((s) => s.id === id) ? { action: "screen", screen: id } : { action: "none" });
+  const listed = (type, key, id) => {
+    const s = screens.find((x) => x.type === type && (x[key] || []).includes(id));
+    return s ? screen(s.id) : null;
+  };
+  if (chip.type === "cameras") return screen("cameras");
+  if (chip.type === "tank") return screen("tank");
   const id = chip.entity;
   const domain = id.split(".")[0];
-  if (domain === "weather") return { action: "page", page: "weather" };
-  if (domain === "camera") return { action: "page", page: "cameras" };
-  if (hass.states[id] && isProbe(hass.states[id])) return { action: "page", page: "tank" };
-  if (domain === "sensor" && isSolar(hass, id)) return { action: "page", page: "solar" };
+  if (domain === "weather") return screen("weather");
+  if (domain === "camera") return screen("cameras");
+  if (domain === "climate") return listed("thermostat", "climates", id) || { action: "none" };
+  if (hass.states[id] && isProbe(hass.states[id])) return screen("tank");
+  if (domain === "sensor" && isSolar(hass, id)) return screen("solar");
+  const air = domain === "sensor" && listed("air_quality", "sensors", id);
+  if (air) return air;
   if (domain === "cover" && asksTwice(hass, id)) return { action: "toggle", entity: id, confirm: true };
   return { action: "none" };
 }
 
 /** What OK on this chip does, in full: its own setting with the gaps filled, or the default. */
-export function resolveOk(hass, chip) {
+export function resolveOk(hass, chip, screens = DEFAULT_SCREENS) {
   const ok = chip.ok;
-  if (!ok || ok.action === "default") return defaultOk(hass, chip);
+  if (!ok || ok.action === "default") return defaultOk(hass, chip, screens);
   const out = { ...ok };
   if (out.action === "toggle" && !out.entity) {
     // Nothing chosen: the chip's own entity, if it can be toggled. A group, a sensor or weather can't.
@@ -225,19 +315,24 @@ export function resolveOk(hass, chip) {
   return out;
 }
 
-const PAGE_NAMES = { weather: "the weather page", solar: "the solar page", tank: "the tank page", cameras: "the camera grid" };
+const SCREEN_NAMES = { weather: "the weather screen", solar: "the solar screen", tank: "the tank screen",
+  cameras: "the camera grid" };
 
-/** "OK opens the weather page", "OK twice opens or closes Garage Door", "OK does nothing". */
-export function describeOk(hass, chip) {
-  const ok = resolveOk(hass, chip);
+/** "OK opens the weather screen", "OK twice opens or closes Garage Door", "OK does nothing". */
+export function describeOk(hass, chip, screens = DEFAULT_SCREENS) {
+  const ok = resolveOk(hass, chip, screens);
   const ok_ = ok.confirm ? "OK twice" : "OK";
   // The chip's own entity by the name the TV shows for the chip (its label, or "Garage"); another by its own name.
   const name = (id) => (chip.type === "entity" && id === chip.entity && preview(hass, chip, {}).label)
     || friendly(hass, id) || id;
   switch (ok.action) {
-    case "page":
-      if (ok.page === "camera") return ok.camera ? `OK opens ${name(ok.camera)} full screen` : "OK opens a camera: choose which";
-      return PAGE_NAMES[ok.page] ? `OK opens ${PAGE_NAMES[ok.page]}` : "OK opens a page: choose which";
+    case "screen": {
+      if (ok.screen === "camera") return ok.camera ? `OK opens ${name(ok.camera)} full screen` : "OK opens a camera: choose which";
+      if (!ok.screen) return "OK opens a screen: choose which";
+      const s = screens.find((x) => x.id === ok.screen);
+      if (!s) return "OK opens a screen that was removed: choose another";
+      return `OK opens ${SCREEN_NAMES[s.type] || `the ${screenTitle(s)} screen`}`;
+    }
     case "toggle": {
       const d = ok.entity.split(".")[0];
       const verb = d === "cover" ? "opens or closes" : d === "lock" ? "locks or unlocks" : "toggles";
@@ -252,9 +347,26 @@ export function describeOk(hass, chip) {
   }
 }
 
+const OK_ICONS = { screen: "mdi:open-in-app", toggle: "mdi:toggle-switch-outline", run: "mdi:play-circle-outline",
+  perform: "mdi:flash-outline" };
+
+/**
+ * The chip row's OK button: an icon for what OK does (a screen, a toggle, a script or scene, an action, nothing),
+ * whether it asks twice, and whether it's half set up ("choose which") so that shows with the editor closed.
+ */
+export function okLook(hass, chip, screens = DEFAULT_SCREENS) {
+  const ok = resolveOk(hass, chip, screens);
+  return {
+    icon: OK_ICONS[ok.action] || "mdi:gesture-tap",
+    twice: Boolean(ok.confirm),
+    choose: /choose (which|what to toggle|another)$/.test(describeOk(hass, chip, screens)),
+    none: ok.action === "none",
+  };
+}
+
 /** The editor's Default choice: "Default: opens or closes Garage (press twice)". */
-export function defaultChoice(hass, chip) {
-  const say = describeOk(hass, { ...chip, ok: undefined });
+export function defaultChoice(hass, chip, screens = DEFAULT_SCREENS) {
+  const say = describeOk(hass, { ...chip, ok: undefined }, screens);
   const twice = say.startsWith("OK twice ");
   return `Default: ${say.replace(/^OK (twice )?/, "")}${twice ? " (press twice)" : ""}`;
 }
@@ -263,11 +375,12 @@ export function defaultChoice(hass, chip) {
  * The chip's ok after choosing another kind of action. It keeps asking twice if what it replaces did (the garage's
  * default does), and a toggle starts on the chip's own entity only when that can be toggled.
  */
-export function switchOk(hass, chip, action) {
+export function switchOk(hass, chip, action, screens = DEFAULT_SCREENS) {
   if (action === "default" || action === "none") return { action };
-  const before = resolveOk(hass, chip);
+  const before = resolveOk(hass, chip, screens);
   const next = { action };
-  if (before.confirm) next.confirm = true;
+  // Only a press asks twice: a screen has no confirm (the integration refuses one, and the editor has no box for it).
+  if (before.confirm && action !== "screen") next.confirm = true;
   if (action === "toggle" && chip.type === "entity" && canToggle(chip.entity)) next.entity = chip.entity;
   return next;
 }
@@ -300,9 +413,20 @@ export function parseSolar(text) {
   }
 }
 
+/** A screen as tv_panel/save takes it: only its type's fields, the title trimmed (an empty one is its type's, as the
+ * title box shows it). */
+function screenToSave(s) {
+  if (!SCREEN_TYPES[s.type]?.extra) return { id: s.id, type: s.type };
+  const out = { id: s.id, type: s.type, title: String(s.title || "").trim() || SCREEN_TYPES[s.type].title };
+  if (s.type === "thermostat") out.climates = (s.climates || []).slice();
+  out.sensors = (s.sensors || []).slice();
+  return out;
+}
+
 /** What tv_panel/save takes. */
 export function toSave(state) {
   return {
+    screens: screensOf(state).map(screenToSave),
     chips: state.chips.map((c) => {
       const out = c.type === "entity" ? { type: "entity", entity: c.entity } : { type: c.type };
       if (c.label && c.label.trim()) out.label = c.label.trim();

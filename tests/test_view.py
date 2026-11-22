@@ -31,10 +31,11 @@ async def test_the_tv_gets_its_settings(hass: HomeAssistant, hass_client_no_auth
 
     assert r.status == HTTPStatus.OK
     body = await r.json()
-    # Each chip comes with what OK does, worked out: the TV doesn't guess.
+    # Each chip comes with what OK does, worked out: the TV doesn't guess. A screen is still "page" to the TV, with
+    # "screen" alongside, because apps before 0.7.0 only open a chip whose OK says "page".
     assert body["chips"] == [
-        {"type": "entity", "entity": "weather.home", "ok": {"action": "page", "page": "weather"}},
-        {"type": "cameras", "ok": {"action": "page", "page": "cameras"}},
+        {"type": "entity", "entity": "weather.home", "ok": {"action": "page", "page": "weather", "screen": "weather"}},
+        {"type": "cameras", "ok": {"action": "page", "page": "cameras", "screen": "cameras"}},
         {"type": "entity", "entity": "climate.hall", "label": "Hall", "ok": {"action": "none"}},
     ]
     assert body["cameras"] == ["camera.b", "camera.a"]
@@ -62,12 +63,12 @@ async def test_the_row_switch_turns_the_row_off(hass: HomeAssistant, hass_client
 
 
 async def test_not_set_up_yet_gives_nulls(hass: HomeAssistant, hass_client_no_auth) -> None:
-    """Never saved: the app keeps using labels and helpers."""
+    """Never saved: the app keeps using labels and helpers. Its screens are the built-in ones."""
     _, token = await paired_tv(hass)
     body = await (await _get(hass_client_no_auth, token)).json()
     assert body == {
         "chips": None, "cameras": None, "tank": None, "solar": None, "entities": None, "camera_order": None,
-        "row": True,
+        "row": True, "screens": [{"id": t, "type": t} for t in ("weather", "solar", "tank", "cameras")],
     }
 
 

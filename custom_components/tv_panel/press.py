@@ -1,8 +1,9 @@
-"""POST /api/tv_panel/press {"key": ...[, "event_only": true, "action": "page"|"none"]}: OK on one of the TV's chips.
+"""POST /api/tv_panel/press {"key": ...[, "event_only": true, "action": "screen"|"none"]}: OK on one of the TV's chips.
 
 The integration does what the chip's settings say (resolve_ok), as the TV's own user, and fires
-tv_panel_chip_pressed for every press, so automations can act on any chip. A page the TV opens itself: the answer
-just names it. The TV only ever says which chip; what that does is set here, by an admin.
+tv_panel_chip_pressed for every press, so automations can act on any chip. A screen the TV opens itself: the answer
+just names it. The TV only ever says which chip; what that does is set here, by an admin. Apps before 0.7.0 call a
+screen a "page": the event says "screen" either way.
 """
 
 from __future__ import annotations
@@ -56,11 +57,13 @@ def _log_failure(task: asyncio.Task) -> None:
         _LOGGER.warning("A TV Panel press failed after it answered: %s", err)
 
 
-async def async_press(hass: HomeAssistant, chip: dict[str, Any], context: Context) -> dict[str, Any]:
-    ok = model.resolve_ok(hass, chip)
+async def async_press(
+    hass: HomeAssistant, chip: dict[str, Any], context: Context, screens: list[dict[str, Any]] | None = None
+) -> dict[str, Any]:
+    ok = model.resolve_ok(hass, chip, screens)
     action = ok["action"]
-    if action == "page":
-        return {"ok": True, "page": ok["page"]} | ({"camera": ok["camera"]} if "camera" in ok else {})
+    if action == "screen":
+        return {"ok": True, "screen": ok["screen"]} | ({"camera": ok["camera"]} if "camera" in ok else {})
     if action == "none":
         return {"ok": True}
     if action == "toggle":
@@ -112,24 +115,25 @@ class TvPanelPressView(HomeAssistantView):
             body = await request.json()
             key = str(body["key"])
         except (ValueError, KeyError, TypeError):
-            return self.json_message("Send {\"key\": ...}", HTTPStatus.BAD_REQUEST)
-        # The TV opened a page itself, or the chip does nothing: it only reports the press, for automations. What
+            return self.json_message('Send {"key": ...}', HTTPStatus.BAD_REQUEST)
+        # The TV opened a screen itself, or the chip does nothing: it only reports the press, for automations. What
         # the chip is set to here is not done, since the TV may not have caught up with a change to it yet.
         event_only = body.get("event_only") is True
         entry = tv_entry(hass, user)
         if entry is None:
             return self.json_message(NOT_A_TV, HTTPStatus.NOT_FOUND)
-        chip = next((c for c in model.settings(hass, entry.options)["chips"] if model.chip_key(c) == key), None)
+        s = model.settings(hass, entry.options)
+        chip = next((c for c in s["chips"] if model.chip_key(c) == key), None)
         if chip is None:
             return self.json_message("No such chip", HTTPStatus.NOT_FOUND)
         context = Context(user_id=user.id)
         if event_only:
-            action = body.get("action") if body.get("action") in ("page", "none") else "page"
+            action = "none" if body.get("action") == "none" else "screen"
         else:
-            action = model.resolve_ok(hass, chip)["action"]
+            action = model.resolve_ok(hass, chip, s["screens"])["action"]
         hass.bus.async_fire(
             EVENT, {"entry_id": entry.entry_id, "tv": entry.title, "chip": key, "action": action}, context=context
         )
         if event_only:
             return self.json({"ok": True})
-        return self.json(await async_press(hass, chip, context))
+        return self.json(await async_press(hass, chip, context, s["screens"]))

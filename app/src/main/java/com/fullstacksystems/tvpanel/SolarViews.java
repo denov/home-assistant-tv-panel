@@ -16,7 +16,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 
-/** The solar page's drawn parts: the energy flow, the panel map and today's chart. */
+/** The solar screen's drawn parts: the energy flow, the panel map and today's chart. */
 final class SolarViews {
     static final int SOLAR = 0xFF22B8E8;
     static final int HOME = 0xFFF5813A;

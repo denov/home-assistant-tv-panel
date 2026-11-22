@@ -9,7 +9,7 @@ import java.util.Collections;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNull;
 
-/** Which weather entity the weather page shows when it's opened without a chip (tv_panel.show, voice). */
+/** Which weather entity the weather screen shows when it's opened without a chip (tv_panel.show, voice). */
 public class WeatherPickTest {
     // NWS first, as Home Assistant may list it: hourly and twice-daily forecasts only (6), and no reading right now.
     private static JSONArray states() throws Exception {

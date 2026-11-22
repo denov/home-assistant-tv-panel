@@ -1,7 +1,8 @@
-"""TV Panel: Home Assistant on an Android TV's home screen, with pages for weather, solar, a reef tank and cameras.
+"""TV Panel: Home Assistant on an Android TV's home screen, with screens for weather, solar, a reef tank and
+cameras.
 
 The integration pairs the TV (its own local-only user and token), and holds the TV's settings and its switches (the
-widget row, and pausing for messages). tv_panel.show opens a page on the TV through the Android TV Remote integration
+widget row, and pausing for messages). tv_panel.show opens a screen on the TV through the Android TV Remote integration
 for the same TV. The notify entity shows messages over the TV's own connection (messages.py), without opening
 anything. The settings (the chips, the cameras, the tank, the solar layout) are edited on the TV Panel page in the
 sidebar, and the TV reads them from /api/tv_panel/config and what it draws from /api/tv_panel/data.
@@ -43,7 +44,8 @@ type TvPanelConfigEntry = ConfigEntry[TvPanelData]
 
 
 async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
-    """What the TV reads (each TV with its own token), the page that edits the settings, and tv_panel.show."""
+    """What the TV reads (each TV with its own token), the sidebar page that edits the settings, and
+    tv_panel.show."""
     hass.http.register_view(TvPanelConfigView())
     hass.http.register_view(TvPanelDataView())
     hass.http.register_view(TvPanelPressView())

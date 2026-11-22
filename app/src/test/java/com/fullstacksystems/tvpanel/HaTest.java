@@ -31,7 +31,7 @@ public class HaTest {
         // A garage door is an icon alone, and OK toggles it.
         assertEquals("", w.get(1).value);
         assertEquals("garage", w.get(1).icon);
-        assertEquals(Ha.TOGGLE, w.get(1).page);
+        assertEquals(Ha.TOGGLE, w.get(1).screen);
         assertTrue(w.get(1).open);
         // No device sorts ahead of the named devices; unavailable reads as a dash.
         assertEquals("Gone", w.get(2).label);
@@ -95,7 +95,7 @@ public class HaTest {
         assertEquals("Alkalinity\tpH\tSalinity\tTemp", w.get(0).label);
         assertEquals("9.53 dKH\t8.23\t34.9 ppt\t78.8 °F", w.get(0).value);
         assertEquals("fish", w.get(0).icon);
-        assertEquals(Ha.APEX, w.get(0).page);
+        assertEquals(Ha.APEX, w.get(0).screen);
         assertEquals("sensor.other", w.get(1).key);
         assertEquals(Ha.BLUE, w.get(0).colour);
 
@@ -155,17 +155,17 @@ public class HaTest {
 
     @Test
     public void unpairedTheRowIsOneChipThatOpensPairing() {
-        // So TV Panel's own tile can be hidden: OK on this chip opens the page with the pairing code.
+        // So TV Panel's own tile can be hidden: OK on this chip opens the status screen with the pairing code.
         Ha.Widget w = Ha.setupChip(false);
         assertEquals(Ha.SETUP, w.key);
         assertEquals("TV Panel", w.label);
         assertEquals("Pair with Home Assistant", w.value);
         assertTrue(w.open);
-        assertEquals(Ha.SETUP, w.page);
+        assertEquals(Ha.SETUP, w.screen);
         // Signed out (the integration was removed, or the token revoked): pair again.
         assertEquals("Pair again", Ha.setupChip(true).value);
         // After a restart, before any rows, OK on it still opens pairing.
-        assertEquals(Ha.SETUP, Ha.guessPage(Ha.SETUP));
+        assertEquals(Ha.SETUP, Ha.guessScreen(Ha.SETUP));
     }
 }
 

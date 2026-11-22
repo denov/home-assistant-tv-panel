@@ -47,7 +47,7 @@ public class ApexActivity extends Activity {
     private final Runnable trendsTick = this::loadTrends;
     private float dp;
 
-    private View page;
+    private View screenView;
     private TextView message, status, updated, tested;
     private LinearLayout water, trident, supplies;
     private final ApexViews.TrendView[] trends = new ApexViews.TrendView[6];
@@ -58,13 +58,13 @@ public class ApexActivity extends Activity {
     @Override
     protected void onCreate(Bundle state) {
         super.onCreate(state);
-        OpenActivity.PAGES.add(this);
+        OpenActivity.SCREENS.add(this);
         dp = getResources().getDisplayMetrics().density;
         FrameLayout frame = new FrameLayout(this);
         frame.setBackground(new GradientDrawable(GradientDrawable.Orientation.TL_BR, new int[] {0xFF0B1E2C, 0xFF061016}));
-        page = build();
-        page.setVisibility(View.INVISIBLE);
-        frame.addView(page);
+        screenView = build();
+        screenView.setVisibility(View.INVISIBLE);
+        frame.addView(screenView);
         message = text("Loading the tank…", 22, 0xCCFFFFFF, false);
         message.setGravity(Gravity.CENTER);
         frame.addView(message, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
@@ -75,6 +75,8 @@ public class ApexActivity extends Activity {
     protected void onResume() {
         super.onResume();
         loadLive();
+        // onPause stopped the trends' tick, and showLive only starts it the first time.
+        if (data != null) loadTrends();
     }
 
     @Override
@@ -86,7 +88,7 @@ public class ApexActivity extends Activity {
 
     @Override
     protected void onDestroy() {
-        OpenActivity.PAGES.remove(this);
+        OpenActivity.SCREENS.remove(this);
         io.shutdownNow();
         super.onDestroy();
     }
@@ -103,7 +105,7 @@ public class ApexActivity extends Activity {
         }
         io.execute(() -> {
             HaClient ha = new HaClient(c.url, c.token);
-            if (zone == null) zone = haZone(ha);
+            if (zone == null) zone = Series.zone(ha);
             HaClient.Reply r = Ha.data(ha, Ha.DATA_TANK, Apex.templateBody());
             if (!r.ok()) {
                 String why = r.code == 401 ? "Home Assistant refused the token (401)."
@@ -124,15 +126,6 @@ public class ApexActivity extends Activity {
         });
     }
 
-    private static ZoneId haZone(HaClient ha) {
-        try {
-            HaClient.Reply cfg = ha.get("/api/config");
-            if (cfg.ok()) return ZoneId.of(new JSONObject(cfg.body).optString("time_zone"));
-        } catch (Exception ignored) {
-            // the TV's own zone
-        }
-        return ZoneId.systemDefault();
-    }
 
     /** Water probes from 5-minute statistics over 24 hours; the Trident's from hourly ones over 7 days. */
     private void loadTrends() {
@@ -178,18 +171,18 @@ public class ApexActivity extends Activity {
     private void showMessage(String s) {
         message.setText(s);
         message.setVisibility(View.VISIBLE);
-        page.setVisibility(View.INVISIBLE);
+        screenView.setVisibility(View.INVISIBLE);
     }
 
     private void showLive(Apex.Data d) {
         if (!d.any()) {
-            showMessage("No Apex probes in Home Assistant. This page reads sensors with an apex_probe_type attribute.");
+            showMessage("No Apex probes in Home Assistant. This screen reads sensors with an apex_probe_type attribute.");
             return;
         }
         boolean first = data == null;
         data = d;
         message.setVisibility(View.GONE);
-        page.setVisibility(View.VISIBLE);
+        screenView.setVisibility(View.VISIBLE);
         ZoneId z = zone == null ? ZoneId.systemDefault() : zone;
         DateTimeFormatter clock = DateTimeFormatter.ofPattern("h:mm a", Locale.US);
         statusLine(d);

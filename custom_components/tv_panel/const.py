@@ -2,7 +2,7 @@
 
 DOMAIN = "tv_panel"
 
-# The TV app listens for pairing on this port while its own page is open (PairServer.java).
+# The TV app listens for pairing on this port while its status screen is open (PairServer.java).
 DEFAULT_PORT = 8766
 
 CONF_TV_ID = "tv_id"

@@ -12,7 +12,7 @@ import java.nio.file.Files;
 /**
  * The Home Assistant address and token, in the app's own storage (backups are off). They come from pairing with the
  * TV Panel integration in Home Assistant (PairServer), or as config.json pushed by install.sh through ConfigProvider,
- * which is read once and deleted, with the solar page's panel layout. Everything else is set in Home
+ * which is read once and deleted, with the solar screen's panel layout. Everything else is set in Home
  * Assistant itself: see README.md.
  */
 final class Config {
@@ -46,7 +46,7 @@ final class Config {
         SettingsSource.invalidate();
     }
 
-    /** The owner's panel layout for the solar page (config.json's "solar"), or "" for rows of panels. */
+    /** The owner's panel layout for the solar screen (config.json's "solar"), or "" for rows of panels. */
     static String solarLayout(Context c) {
         return prefs(c).getString("solar", "");
     }
@@ -69,7 +69,7 @@ final class Config {
 
     /**
      * Takes a pushed config.json ({"url": ..., "token": ...}) if there is one, and deletes it. One that doesn't read is
-     * kept while it may still be being written: the status page can look before install.sh's write is done, and the
+     * kept while it may still be being written: the status screen can look before install.sh's write is done, and the
      * import that runs when the write closes (ConfigProvider) then finds it.
      */
     static boolean importPushed(Context c) {

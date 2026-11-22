@@ -18,7 +18,7 @@ import java.security.MessageDigest;
 import java.security.SecureRandom;
 
 /**
- * Pairing with the TV Panel integration in Home Assistant, while the app's own page is open. The page shows a
+ * Pairing with the TV Panel integration in Home Assistant, while the app's status screen is open. It shows a
  * six-digit code; the integration finds the TV over mDNS ({@value #SERVICE}, announced by {@link MdnsResponder}) or by its address, the person types
  * the code into Home Assistant, and the integration sends the address and a token of the TV's own:
  *
@@ -28,7 +28,7 @@ import java.security.SecureRandom;
  * </pre>
  *
  * Plain HTTP on the LAN, like Home Assistant itself here. Five wrong codes in a row make a new code. Nothing listens
- * while the page is closed.
+ * while the status screen is closed.
  */
 final class PairServer {
     static final String SERVICE = "_tvpanel._tcp";

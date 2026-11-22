@@ -1,4 +1,4 @@
-"""What the TV draws: the chip row, and the live values of the camera, tank and solar screens.
+"""What the TV draws: the chip row, and the live values of the camera, tank, solar, thermostat and air quality screens.
 
 The app used to send its own Jinja templates to /api/template, which only an admin may call. These build the same
 answers here, so the TV's user can be a normal one. Each shape is what the app's parser reads: Ha.parseWidgets,
@@ -14,7 +14,7 @@ from typing import Any
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import ATTR_FRIENDLY_NAME, ATTR_UNIT_OF_MEASUREMENT, STATE_UNKNOWN
 from homeassistant.core import HomeAssistant, State
-from homeassistant.helpers import device_registry as dr, entity_registry as er
+from homeassistant.helpers import area_registry as ar, device_registry as dr, entity_registry as er
 
 from . import model
 
@@ -163,3 +163,92 @@ def solar(hass: HomeAssistant, entry: ConfigEntry) -> dict[str, Any]:
 
 
 BUILDERS = {"chips": chips, "cameras": cameras, "tank": tank, "solar": solar}
+
+# The standard climate attributes the thermostat screen reads, from any integration's thermostat. Temperatures are in
+# Home Assistant's unit.
+CLIMATE_ATTRIBUTES = (
+    "current_temperature", "temperature", "target_temp_low", "target_temp_high", "hvac_action", "hvac_modes",
+    "current_humidity", "target_humidity", "fan_mode", "preset_mode", "min_temp", "max_temp", "target_temp_step",
+    "supported_features",
+)
+
+
+def thermostat(hass: HomeAssistant, entry: ConfigEntry, screen: dict[str, Any]) -> dict[str, Any]:
+    """A thermostat screen: each thermostat's state and standard attributes, and its other readings."""
+    climates = []
+    for e in screen["climates"]:
+        state, a = _read(hass, e)
+        climates.append(
+            {
+                "id": e,
+                "name": a.get(ATTR_FRIENDLY_NAME),
+                "state": state,
+                "attributes": {k: a[k] for k in CLIMATE_ATTRIBUTES if a.get(k) is not None},
+            }
+        )
+    sensors = []
+    for e in screen.get("sensors", []):
+        state, a = _read(hass, e)
+        sensors.append(
+            {
+                "id": e,
+                "name": a.get(ATTR_FRIENDLY_NAME),
+                "state": state,
+                "unit": a.get(ATTR_UNIT_OF_MEASUREMENT),
+                "dc": a.get("device_class"),
+            }
+        )
+    return {
+        "title": model.screen_title(screen),
+        "unit": hass.config.units.temperature_unit,
+        "climates": climates,
+        "sensors": sensors,
+    }
+
+
+def _area(hass: HomeAssistant, entity_id: str) -> str | None:
+    """The entity's area, or its device's."""
+    entry = er.async_get(hass).async_get(entity_id)
+    if entry is None:
+        return None
+    area_id = entry.area_id
+    if area_id is None and entry.device_id is not None:
+        device = dr.async_get(hass).async_get(entry.device_id)
+        area_id = device.area_id if device is not None else None
+    area = ar.async_get(hass).async_get_area(area_id) if area_id else None
+    return area.name if area is not None else None
+
+
+def _without(name: str | None, prefix: str | None) -> str | None:
+    """"Air Monitor CO2" without "Air Monitor": the rest, when there's a rest."""
+    if name and prefix and name.lower().startswith(prefix.lower() + " ") and len(name) > len(prefix) + 1:
+        return name[len(prefix) + 1 :]
+    return name
+
+
+def air_quality(hass: HomeAssistant, entry: ConfigEntry, screen: dict[str, Any]) -> dict[str, Any]:
+    """An air quality screen: each sensor with its room first, and what it measures (device and state class). The
+    name drops the room and the device from its front ("Air Monitor CO2" on the device "Air Monitor" is "CO2"; "Probe 2
+    Office Temperature" on "Probe 2", in the Office, is "Temperature"), as the chips do, so a tile has room for
+    what matters."""
+    sensors = []
+    for e in screen["sensors"]:
+        state, a = _read(hass, e)
+        area = _area(hass, e)
+        name = _without(_without(_without(a.get(ATTR_FRIENDLY_NAME), area), _device_name(hass, e)), area)
+        sensors.append(
+            {
+                "id": e,
+                "area": area,
+                "name": name,
+                "state": state,
+                "unit": a.get(ATTR_UNIT_OF_MEASUREMENT),
+                "dc": a.get("device_class"),
+                "sc": a.get("state_class"),
+            }
+        )
+    return {"title": model.screen_title(screen), "sensors": sensors}
+
+
+# Those for one of the TV's screens: /data/thermostat?screen=<id>.
+SCREEN_BUILDERS = {"thermostat": thermostat, "air_quality": air_quality}

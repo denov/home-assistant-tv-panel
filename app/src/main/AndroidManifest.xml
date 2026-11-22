@@ -7,7 +7,7 @@
     <!-- Your Home Assistant server, and nothing else. -->
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
-    <!-- mDNS on Wi-Fi TVs, so Home Assistant finds the TV while its TV Panel page is open. -->
+    <!-- mDNS on Wi-Fi TVs, so Home Assistant finds the TV while TV Panel is open on it. -->
     <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE" />
     <!-- MessageService: the connection Home Assistant's messages arrive on, kept while other apps are in front,
          and started again at boot. -->
@@ -35,8 +35,8 @@
             </intent-filter>
         </activity>
 
-        <!-- OK on a chip that has a page: the launcher sends this action with the chip's key, and this routes it to
-             the weather, solar, Apex or camera page. Their own task, so Back always returns to Home rather than to the status page. -->
+        <!-- OK on a chip that has a screen: the launcher sends this action with the chip's key, and this routes it to
+             the chip's screen. Their own task, so Back always returns to Home rather than to the status screen. -->
         <activity
             android:name=".OpenActivity"
             android:exported="true"
@@ -48,7 +48,7 @@
                 <action android:name="com.gathin.tvhome.action.OPEN_WIDGET" />
                 <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>
-            <!-- tvpanel://weather, tvpanel://solar, tvpanel://apex and tvpanel://cameras[/camera.x], so Home Assistant can open a page
+            <!-- tvpanel://weather, tvpanel://solar, tvpanel://apex, tvpanel://cameras[/camera.x] and tvpanel://screen/<id>, so Home Assistant can open a screen
                  (tv_panel.show, or remote.turn_on on the Android TV Remote integration with activity: tvpanel://weather).
                  Messages come over MessageService instead, so nothing opens for them. -->
             <intent-filter>
@@ -79,6 +79,19 @@
 
         <activity
             android:name=".CameraActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:taskAffinity="" />
+
+        <!-- Screens the owner adds (0.7.0), opened by id: OK on a chip, or tvpanel://screen/<id>. -->
+        <activity
+            android:name=".ThermostatActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:taskAffinity="" />
+
+        <activity
+            android:name=".AirQualityActivity"
             android:exported="false"
             android:excludeFromRecents="true"
             android:taskAffinity="" />

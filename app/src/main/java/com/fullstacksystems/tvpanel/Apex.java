@@ -14,13 +14,13 @@ import java.util.Locale;
 import java.util.Set;
 
 /**
- * The Apex page's data: a Neptune Apex in Home Assistant. Probes are found by their {@code apex_probe_type}
+ * The tank screen's data: a Neptune Apex in Home Assistant. Probes are found by their {@code apex_probe_type}
  * attribute (Temp, pH, Cond, and the Trident's alk, ca, mg). Trident reagents and waste, DOS containers, the Trident
  * and DOS outlet modes and the alarm are found by entity id. Pure Java (no Android types) so the JVM tests cover it.
  */
 final class Apex {
-    /** Probe types whose chip opens the Apex page. */
-    static final Set<String> PAGE_TYPES = new HashSet<>(Arrays.asList("Temp", "pH", "Cond", "alk", "ca", "mg"));
+    /** Probe types that go in the tank chip (model.TANK_PROBES in the integration); their chips open the tank screen. */
+    static final Set<String> CHIP_TYPES = new HashSet<>(Arrays.asList("Temp", "pH", "Cond", "alk", "ca", "mg"));
     /** Water probes per type: the first two by id. A third (an expansion module's) is often unplugged and wrong. */
     static final int PROBES_PER_TYPE = 2;
 
@@ -49,7 +49,7 @@ final class Apex {
         }
     }
 
-    /** One entity as the page needs it. Numbers are NaN, and {@code tests} -1, when Home Assistant has none. */
+    /** One entity as the screen needs it. Numbers are NaN, and {@code tests} -1, when Home Assistant has none. */
     static final class Item {
         String id = "", state = "", unit = "", name = "", type = "";
         double value = Double.NaN, full = Double.NaN, left = Double.NaN;

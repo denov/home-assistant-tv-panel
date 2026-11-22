@@ -32,8 +32,8 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 /**
- * The camera chip's page: the labelled cameras in a 3 by 2 grid, each a snapshot that refreshes about every second
- * while the page is open. OK on a camera opens it full screen and live ({@link CameraViewActivity}). Slots without a
+ * The camera chip's screen: the labelled cameras in a 3 by 2 grid, each a snapshot that refreshes about every second
+ * while the screen is open. OK on a camera opens it full screen and live ({@link CameraViewActivity}). Slots without a
  * camera are drawn empty. Back returns to Home.
  */
 public class CameraActivity extends Activity {
@@ -62,7 +62,7 @@ public class CameraActivity extends Activity {
     @Override
     protected void onCreate(Bundle state) {
         super.onCreate(state);
-        OpenActivity.PAGES.add(this);
+        OpenActivity.SCREENS.add(this);
         dp = getResources().getDisplayMetrics().density;
         FrameLayout frame = new FrameLayout(this);
         frame.setBackground(new GradientDrawable(GradientDrawable.Orientation.TL_BR, new int[] {0xFF101826, 0xFF06090F}));
@@ -91,7 +91,7 @@ public class CameraActivity extends Activity {
 
     @Override
     protected void onDestroy() {
-        OpenActivity.PAGES.remove(this);
+        OpenActivity.SCREENS.remove(this);
         gen++;
         io.shutdownNow();
         snaps.shutdownNow();

@@ -1,10 +1,11 @@
 show:
   fields:
-    page:
+    screen:
       required: true
       selector:
         select:
-          translation_key: page
+          translation_key: screen
+          custom_value: true
           options:
             - weather
             - solar

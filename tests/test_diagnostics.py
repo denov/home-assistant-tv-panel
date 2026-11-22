@@ -1,6 +1,7 @@
 """Diagnostics: what a bug report needs, without the TV's address, its user, or the owner's inverter serials."""
 
 import json
+from pathlib import Path
 
 from homeassistant.auth.const import GROUP_ID_USER
 from homeassistant.core import HomeAssistant
@@ -33,7 +34,8 @@ async def test_diagnostics(hass: HomeAssistant, hass_client) -> None:
 
     diag = await get_diagnostics_for_config_entry(hass, hass_client, entry)
 
-    assert diag["version"] == "0.6.0"
+    manifest = Path(__file__).parent.parent / "custom_components" / "tv_panel" / "manifest.json"
+    assert diag["version"] == json.loads(manifest.read_text())["version"]
     assert diag["user"] == {"admin": False, "local_only": True, "active": True}
     assert diag["row"] is True
     assert diag["listening"] == 0

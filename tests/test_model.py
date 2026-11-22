@@ -63,7 +63,8 @@ async def test_settings_already_in_the_new_shape_are_kept(hass: HomeAssistant) -
         "tank": ["sensor.apex_temp"],
         "solar": None,
     }
-    assert model.settings(hass, options) == options
+    # Saved before 0.7.0, so no screens: the built-in ones.
+    assert model.settings(hass, options) == options | {"screens": model.default_screens()}
     assert model.saved(options) is True
 
 
@@ -122,12 +123,12 @@ async def test_default_ok_is_what_the_tv_did_before(hass: HomeAssistant) -> None
     def ok(chip):
         return model.resolve_ok(hass, chip)
 
-    assert ok({"type": "entity", "entity": "weather.home"}) == {"action": "page", "page": "weather"}
-    assert ok({"type": "cameras"}) == {"action": "page", "page": "cameras"}
-    assert ok({"type": "tank"}) == {"action": "page", "page": "tank"}
+    assert ok({"type": "entity", "entity": "weather.home"}) == {"action": "screen", "screen": "weather"}
+    assert ok({"type": "cameras"}) == {"action": "screen", "screen": "cameras"}
+    assert ok({"type": "tank"}) == {"action": "screen", "screen": "tank"}
     assert ok({"type": "entity", "entity": "sensor.envoy_current_power_production"}) == {
-        "action": "page",
-        "page": "solar",
+        "action": "screen",
+        "screen": "solar",
     }
     assert ok({"type": "entity", "entity": "cover.garage_door"}) == {
         "action": "toggle",
@@ -176,8 +177,8 @@ def test_validate_takes_the_ok_choices() -> None:
     oks = [
         {"action": "default"},
         {"action": "none"},
-        {"action": "page", "page": "solar"},
-        {"action": "page", "page": "camera", "camera": "camera.driveway"},
+        {"action": "screen", "screen": "solar"},
+        {"action": "screen", "screen": "camera", "camera": "camera.driveway"},
         {"action": "toggle", "entity": "light.hall", "confirm": True},
         {"action": "run", "entity": "scene.movie"},
         {
@@ -196,8 +197,8 @@ def test_validate_takes_the_ok_choices() -> None:
     assert out[6]["ok"]["data"] == {"brightness_pct": 30}
 
     for bad in (
-        {"action": "page", "page": "nope"},
-        {"action": "page", "page": "camera"},
+        {"action": "screen", "screen": "nope"},
+        {"action": "screen", "screen": "camera"},
         {"action": "run", "entity": "light.hall"},
         {"action": "perform", "perform_action": "not a service"},
         {"action": "explode"},
@@ -227,13 +228,28 @@ async def test_only_what_can_be_toggled_is_toggled(hass: HomeAssistant) -> None:
 def test_a_half_set_action_says_what_is_missing() -> None:
     """Not "value must be one of ['default', 'none']" for every mistake."""
     for ok, missing in (
-        ({"action": "page"}, "page"),
-        ({"action": "page", "page": "camera"}, "camera"),
+        ({"action": "screen"}, "screen"),
+        ({"action": "screen", "screen": "camera"}, "camera"),
         ({"action": "run"}, "entity"),
         ({"action": "perform", "perform_action": "light"}, "perform_action"),
     ):
         with pytest.raises(vol.Invalid, match=missing):
             model.validate({"chips": [{"type": "entity", "entity": "sensor.x", "ok": ok}], "cameras": [], "tank": []})
+
+
+def test_an_old_page_ok_is_a_screen_now(hass: HomeAssistant) -> None:
+    """0.4.0 to 0.6.0 saved {"action": "page", "page": ...}. It reads back as a screen; saving writes the new shape."""
+    old = [
+        {"type": "entity", "entity": "sensor.x", "ok": {"action": "page", "page": "solar"}},
+        {"type": "entity", "entity": "sensor.y", "ok": {"action": "page", "page": "camera", "camera": "camera.drive"}},
+    ]
+    read = model.settings(hass, {"chips": old, "cameras": [], "tank": []})["chips"]
+    assert read[0]["ok"] == {"action": "screen", "screen": "solar"}
+    assert read[1]["ok"] == {"action": "screen", "screen": "camera", "camera": "camera.drive"}
+    saved = model.validate({"chips": old, "cameras": [], "tank": []})["chips"]
+    assert [c["ok"] for c in saved] == [c["ok"] for c in read]
+    # What was saved isn't changed by reading it.
+    assert old[0]["ok"] == {"action": "page", "page": "solar"}
 
 
 def test_the_page_toggles_what_the_integration_toggles() -> None:

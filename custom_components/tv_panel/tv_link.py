@@ -1,4 +1,4 @@
-"""Open TV Panel's pages on the TV, through Home Assistant's Android TV Remote integration.
+"""Open TV Panel's screens on the TV, through Home Assistant's Android TV Remote integration.
 
 The TV Panel app takes tvpanel:// links: tvpanel://weather, tvpanel://cameras/camera.front_door. The Android TV Remote
 integration set up for the same TV (found by its address) sends them. A URL played on its media player opens the
@@ -21,12 +21,13 @@ _LOGGER = logging.getLogger(__name__)
 
 ANDROID_TV_REMOTE = "androidtv_remote"
 
-# The page names services take, and the link each opens. The tank page's link is the Apex one the app always had.
-PAGES = {"weather": "weather", "solar": "solar", "tank": "apex", "cameras": "cameras"}
+# The built-in screens' links, which apps before 0.7.0 know too. The tank screen's is the Apex one the app always had.
+# Any other screen is tvpanel://screen/<id>.
+SCREENS = {"weather": "weather", "solar": "solar", "tank": "apex", "cameras": "cameras"}
 CAMERA = "camera"
 
-# A page opened while the screensaver shows lands behind it. Any ordinary key closes the screensaver (WAKEUP doesn't),
-# and TV Panel's pages ignore MENU: so MENU, once the page has had time to open.
+# A screen opened while the screensaver shows lands behind it. Any ordinary key closes the screensaver (WAKEUP
+# doesn't), and TV Panel's screens ignore MENU: so MENU, once the screen has had time to open.
 SCREENSAVER_DELAY = 1.0
 
 
@@ -38,10 +39,10 @@ class Remote:
     remote: str | None
 
 
-def page_link(page: str, camera: str | None = None) -> str:
-    if page == CAMERA:
+def screen_link(screen: str, camera: str | None = None) -> str:
+    if screen == CAMERA:
         return f"tvpanel://cameras/{camera}"
-    return f"tvpanel://{PAGES[page]}"
+    return f"tvpanel://{SCREENS[screen]}" if screen in SCREENS else f"tvpanel://screen/{screen}"
 
 
 def find_remote(hass: HomeAssistant, entry: ConfigEntry) -> Remote | None:

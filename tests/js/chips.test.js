@@ -102,10 +102,10 @@ const tests = {
   },
   "what OK does by default, as the integration decides"() {
     const d = (chip) => chips.resolveOk(hass, chip);
-    assert.deepStrictEqual(d({ type: "entity", entity: "weather.home" }), { action: "page", page: "weather" });
-    assert.deepStrictEqual(d({ type: "entity", entity: "sensor.envoy_current_power_production" }), { action: "page", page: "solar" });
-    assert.deepStrictEqual(d({ type: "cameras" }), { action: "page", page: "cameras" });
-    assert.deepStrictEqual(d({ type: "tank" }), { action: "page", page: "tank" });
+    assert.deepStrictEqual(d({ type: "entity", entity: "weather.home" }), { action: "screen", screen: "weather" });
+    assert.deepStrictEqual(d({ type: "entity", entity: "sensor.envoy_current_power_production" }), { action: "screen", screen: "solar" });
+    assert.deepStrictEqual(d({ type: "cameras" }), { action: "screen", screen: "cameras" });
+    assert.deepStrictEqual(d({ type: "tank" }), { action: "screen", screen: "tank" });
     assert.deepStrictEqual(d({ type: "entity", entity: "cover.garage_door" }),
       { action: "toggle", entity: "cover.garage_door", confirm: true });
     assert.deepStrictEqual(d({ type: "entity", entity: "climate.hall" }), { action: "none" });
@@ -183,9 +183,9 @@ const tests = {
   },
   "each chip says what OK does"() {
     const say = (chip) => chips.describeOk(hass, chip);
-    assert.strictEqual(say({ type: "entity", entity: "weather.home" }), "OK opens the weather page");
+    assert.strictEqual(say({ type: "entity", entity: "weather.home" }), "OK opens the weather screen");
     assert.strictEqual(say({ type: "cameras" }), "OK opens the camera grid");
-    assert.strictEqual(say({ type: "tank" }), "OK opens the tank page");
+    assert.strictEqual(say({ type: "tank" }), "OK opens the tank screen");
     // The chip's own entity goes by the chip's name on the TV ("Garage"), or its label.
     assert.strictEqual(say({ type: "entity", entity: "cover.garage_door" }), "OK twice opens or closes Garage");
     assert.strictEqual(say({ type: "entity", entity: "cover.garage_door", label: "Big door" }), "OK twice opens or closes Big door");
@@ -193,7 +193,7 @@ const tests = {
     assert.strictEqual(say({ type: "entity", entity: "weather.home", ok: { action: "toggle", entity: "cover.garage_door" } }),
       "OK opens or closes Garage Door");
     assert.strictEqual(say({ type: "entity", entity: "climate.hall" }), "OK does nothing");
-    assert.strictEqual(say({ type: "entity", entity: "sensor.x", ok: { action: "page", page: "camera", camera: "camera.front" } }),
+    assert.strictEqual(say({ type: "entity", entity: "sensor.x", ok: { action: "screen", screen: "camera", camera: "camera.front" } }),
       "OK opens Camera - Front Door full screen");
     hass.states["script.good_night"] = { entity_id: "script.good_night", state: "off", attributes: { friendly_name: "Good night" } };
     assert.strictEqual(say({ type: "entity", entity: "sensor.x", ok: { action: "run", entity: "script.good_night", confirm: true } }),
@@ -203,6 +203,24 @@ const tests = {
     assert.strictEqual(say({ type: "entity", entity: "climate.hall", ok: { action: "toggle" } }), "OK toggles Hallway Thermostat");
     assert.strictEqual(say({ type: "entity", entity: "climate.hall", label: "Hall", ok: { action: "toggle" } }), "OK toggles Hall");
   },
+  "the OK button shows what OK does at a glance"() {
+    const look = (chip) => chips.okLook(hass, chip);
+    // A screen, a toggle (asking twice), a script, an action, nothing: one icon each.
+    assert.deepStrictEqual(look({ type: "entity", entity: "weather.home" }),
+      { icon: "mdi:open-in-app", twice: false, choose: false, none: false });
+    assert.deepStrictEqual(look({ type: "entity", entity: "cover.garage_door" }),
+      { icon: "mdi:toggle-switch-outline", twice: true, choose: false, none: false });
+    assert.strictEqual(look({ type: "entity", entity: "sensor.x", ok: { action: "run", entity: "script.good_night" } }).icon,
+      "mdi:play-circle-outline");
+    assert.strictEqual(look({ type: "entity", entity: "sensor.x", ok: { action: "perform", perform_action: "light.turn_on" } }).icon,
+      "mdi:flash-outline");
+    assert.deepStrictEqual(look({ type: "entity", entity: "climate.hall" }),
+      { icon: "mdi:gesture-tap", twice: false, choose: false, none: true });
+    // Half set up ("choose which"): it says so, so it isn't missed with the editor closed.
+    assert.strictEqual(look({ type: "entity", entity: "sensor.x", ok: { action: "screen" } }).choose, true);
+    assert.strictEqual(look({ type: "entity", entity: "sensor.x", ok: { action: "run" } }).choose, true);
+    assert.strictEqual(look({ type: "entity", entity: "sensor.x", ok: { action: "toggle" } }).choose, true);
+  },
   "choosing another kind of action keeps what matters from the one it replaces"() {
     const garage = { type: "entity", entity: "cover.garage_door" };
     // The garage's default asks twice: an explicit toggle must too, or one OK opens the door.
@@ -211,13 +229,15 @@ const tests = {
     // A sensor can't be toggled: nothing is chosen for it, so the page asks.
     assert.deepStrictEqual(chips.switchOk(hass, { type: "entity", entity: "sensor.hall_temperature" }, "toggle"), { action: "toggle" });
     assert.deepStrictEqual(chips.switchOk(hass, garage, "none"), { action: "none" });
+    // A screen never asks twice (the integration refuses confirm on one, and the page has no box to untick).
+    assert.deepStrictEqual(chips.switchOk(hass, garage, "screen"), { action: "screen" });
     assert.deepStrictEqual(chips.resolveOk(hass, { type: "entity", entity: "sensor.hall_temperature", ok: { action: "toggle" } }),
       { action: "none" });
   },
   "a half-set action says what's still to choose"() {
     const say = (ok) => chips.describeOk(hass, { type: "entity", entity: "sensor.x", ok });
-    assert.strictEqual(say({ action: "page" }), "OK opens a page: choose which");
-    assert.strictEqual(say({ action: "page", page: "camera" }), "OK opens a camera: choose which");
+    assert.strictEqual(say({ action: "screen" }), "OK opens a screen: choose which");
+    assert.strictEqual(say({ action: "screen", screen: "camera" }), "OK opens a camera: choose which");
     assert.strictEqual(say({ action: "run" }), "OK runs a script or scene: choose which");
     assert.strictEqual(say({ action: "perform" }), "OK performs an action: choose which");
     assert.strictEqual(say({ action: "toggle" }), "OK does nothing: choose what to toggle");
@@ -226,22 +246,96 @@ const tests = {
     assert.strictEqual(chips.defaultChoice(hass, { type: "entity", entity: "cover.garage_door" }),
       "Default: opens or closes Garage (press twice)");
     assert.strictEqual(chips.defaultChoice(hass, { type: "entity", entity: "weather.home", ok: { action: "none" } }),
-      "Default: opens the weather page");
+      "Default: opens the weather screen");
   },
   "toggles cover the integration's domains"() {
     assert.deepStrictEqual(chips.TOGGLE_DOMAINS, ["automation", "climate", "cover", "fan", "humidifier", "input_boolean",
       "light", "lock", "media_player", "remote", "siren", "switch", "valve"]);
   },
+  "without a list, the screens are the four built-in ones"() {
+    assert.deepStrictEqual(chips.DEFAULT_SCREENS, [{ id: "weather", type: "weather" }, { id: "solar", type: "solar" },
+      { id: "tank", type: "tank" }, { id: "cameras", type: "cameras" }]);
+    assert.deepStrictEqual(chips.screensOf({}), chips.DEFAULT_SCREENS);
+    assert.deepStrictEqual(chips.screensOf({ screens: [] }), []);
+  },
+  "only screens that can still be added are offered"() {
+    const types = (screens) => chips.addableTypes(screens).map(([t]) => t);
+    assert.deepStrictEqual(types(chips.DEFAULT_SCREENS), ["thermostat", "air_quality"]);
+    assert.deepStrictEqual(types([{ id: "weather", type: "weather" }]), ["solar", "tank", "cameras", "thermostat", "air_quality"]);
+  },
+  "a new screen gets an id once, from its title"() {
+    const up = chips.newScreen(chips.DEFAULT_SCREENS, "thermostat");
+    assert.deepStrictEqual(up, { id: "thermostat", type: "thermostat", title: "Thermostat", climates: [], sensors: [] });
+    assert.strictEqual(chips.newScreen([...chips.DEFAULT_SCREENS, up], "thermostat").id, "thermostat_2");
+    assert.deepStrictEqual(chips.newScreen([], "air_quality"), { id: "air_quality", type: "air_quality", title: "Air quality", sensors: [] });
+    assert.deepStrictEqual(chips.newScreen([], "solar"), { id: "solar", type: "solar" });
+    // Renaming it later keeps the id: chips, automations and voice use it.
+    assert.strictEqual(chips.screenTitle({ ...up, title: "Upstairs" }), "Upstairs");
+    assert.strictEqual(chips.screenTitle({ id: "tank", type: "tank" }), "Tank");
+  },
+  "each screen has its link"() {
+    assert.strictEqual(chips.screenLink({ id: "tank", type: "tank" }), "tvpanel://apex");
+    assert.strictEqual(chips.screenLink({ id: "weather", type: "weather" }), "tvpanel://weather");
+    assert.strictEqual(chips.screenLink({ id: "thermostat_2", type: "thermostat" }), "tvpanel://screen/thermostat_2");
+  },
+  "a thermostat or air sensor opens the screen that lists it"() {
+    const up = { id: "thermostat", type: "thermostat", title: "Upstairs", climates: ["climate.hall"], sensors: [] };
+    const air = { id: "air", type: "air_quality", title: "Air", sensors: ["sensor.den_co2"] };
+    const screens = [...chips.DEFAULT_SCREENS, up, air];
+    const ok = (chip) => chips.defaultOk(hass, chip, screens);
+    assert.deepStrictEqual(ok({ type: "entity", entity: "climate.hall" }), { action: "screen", screen: "thermostat" });
+    assert.deepStrictEqual(ok({ type: "entity", entity: "climate.den" }), { action: "none" });
+    assert.deepStrictEqual(ok({ type: "entity", entity: "sensor.den_co2" }), { action: "screen", screen: "air" });
+    assert.strictEqual(chips.describeOk(hass, { type: "entity", entity: "climate.hall" }, screens), "OK opens the Upstairs screen");
+    // Without a list: the built-in ones.
+    assert.deepStrictEqual(chips.defaultOk(hass, { type: "tank" }), { action: "screen", screen: "tank" });
+  },
+  "a removed screen is no one's default, and a chip set to open it says so"() {
+    const noSolar = chips.DEFAULT_SCREENS.filter((s) => s.id !== "solar");
+    const solarChip = { type: "entity", entity: "sensor.envoy_current_power_production" };
+    assert.deepStrictEqual(chips.defaultOk(hass, solarChip, noSolar), { action: "none" });
+    const set = { ...solarChip, label: "Sun", ok: { action: "screen", screen: "solar" } };
+    assert.strictEqual(chips.describeOk(hass, set, noSolar), "OK opens a screen that was removed: choose another");
+    assert.strictEqual(chips.okLook(hass, set, noSolar).choose, true);
+    // So removing it can say which chips are in the way.
+    assert.deepStrictEqual(chips.chipsOpening(hass, [set, solarChip], "solar"), ["Sun"]);
+  },
+  "the OK editor offers the screens there are"() {
+    const up = { id: "thermostat", type: "thermostat", title: "Upstairs", climates: [], sensors: [] };
+    assert.deepStrictEqual(chips.screenChoices([{ id: "weather", type: "weather" }, { id: "cameras", type: "cameras" }, up]),
+      [["weather", "Weather"], ["cameras", "Camera grid"], ["thermostat", "Upstairs"]]);
+  },
+  "air quality suggests the sensors Home Assistant knows about, by device"() {
+    const h = { ...hass, states: { ...hass.states,
+      "sensor.den_co2": { entity_id: "sensor.den_co2", state: "612", attributes: { friendly_name: "Den CO2", device_class: "carbon_dioxide" } },
+      "sensor.den_pm25": { entity_id: "sensor.den_pm25", state: "4", attributes: { friendly_name: "Den PM2.5", device_class: "pm25" } },
+      "sensor.attic_voc": { entity_id: "sensor.attic_voc", state: "90", attributes: { friendly_name: "Attic VOC", device_class: "volatile_organic_compounds" } },
+    }, entities: { ...hass.entities, "sensor.den_co2": { device_id: "den" }, "sensor.den_pm25": { device_id: "den" } },
+    devices: { ...hass.devices, den: { name: "Den monitor" } } };
+    const found = chips.airSuggestions(h, ["sensor.den_pm25"]);
+    assert.deepStrictEqual(found.map((f) => [f.group, f.entity_id]), [["", "sensor.attic_voc"], ["Den monitor", "sensor.den_co2"]]);
+    // The temperature sensor isn't suggested first, but search finds any sensor.
+    assert.ok(!found.some((f) => f.entity_id === "sensor.hall_temperature"));
+  },
+  "saving sends the screens as the integration takes them"() {
+    const up = { id: "thermostat", type: "thermostat", title: " Upstairs ", climates: ["climate.hall"], sensors: [] };
+    const out = chips.toSave({ chips: [], cameras: [], tank: [], solarText: "", screens: [{ id: "weather", type: "weather" }, up] });
+    assert.deepStrictEqual(out.screens, [{ id: "weather", type: "weather" },
+      { id: "thermostat", type: "thermostat", title: "Upstairs", climates: ["climate.hall"], sensors: [] }]);
+    // A title cleared on the page is the one its box shows greyed out, not one the integration refuses.
+    const cleared = chips.toSave({ chips: [], cameras: [], tank: [], solarText: "", screens: [{ ...up, title: "  " }] });
+    assert.strictEqual(cleared.screens[0].title, "Thermostat");
+  },
   "saving sends only what the integration takes, with empty labels dropped"() {
     const out = chips.toSave({
       chips: [{ type: "entity", entity: "climate.hall", label: "  ", ok: { action: "default" } },
-        { type: "tank", label: "Reef", ok: { action: "page", page: "solar" } }],
-      cameras: ["camera.front"], tank: ["sensor.apex_ph"], solarText: "", saved: false,
+        { type: "tank", label: "Reef", ok: { action: "screen", screen: "solar" } }],
+      cameras: ["camera.front"], tank: ["sensor.apex_ph"], solarText: "", saved: false, screens: chips.DEFAULT_SCREENS,
     });
     assert.deepStrictEqual(out, {
       // "default" is the same as no ok at all; any other is kept.
-      chips: [{ type: "entity", entity: "climate.hall" }, { type: "tank", label: "Reef", ok: { action: "page", page: "solar" } }],
-      cameras: ["camera.front"], tank: ["sensor.apex_ph"], solar: null,
+      chips: [{ type: "entity", entity: "climate.hall" }, { type: "tank", label: "Reef", ok: { action: "screen", screen: "solar" } }],
+      cameras: ["camera.front"], tank: ["sensor.apex_ph"], solar: null, screens: chips.DEFAULT_SCREENS,
     });
   },
 };

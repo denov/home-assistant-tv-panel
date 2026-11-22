@@ -15,7 +15,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 
-/** The Apex page's drawn parts: a trend chart per measurement and the level bars for containers. */
+/** The tank screen's drawn parts: a trend chart per measurement and the level bars for containers. */
 final class ApexViews {
     static final int LINE_1 = Ha.BLUE;
     static final int LINE_2 = 0xFFFF9F43;

@@ -7,9 +7,12 @@
 point this at your real one: it writes states and pairs a TV that doesn't exist. It refuses any address but this
 machine's (localhost, 127.0.0.1) unless you add --throwaway.
 
-1. It sets stand-in states for the kinds of entity TV Panel draws (weather, a garage door, a gate, a lock, a
-   thermostat, cameras, solar, Apex probes when there are none), so the settings page and its preview have something
-   to show. They are plain states, not entities: they can't be toggled, and a restart clears them, so run it again.
+1. It sets stand-in states for the kinds of entity TV Panel draws (weather, a garage door, a gate, a lock, cameras,
+   solar, Apex probes when there are none), three thermostats unlike each other (heat and cool with a range, heat
+   only, and one that doesn't say what it's doing), and air quality sensors (CO2, PM2.5, a VOC index without a device
+   class, and an AQI without a state class), so the settings page, its preview and the screens have something to
+   show. They are plain states, not entities: they can't be toggled, and a restart clears them, so run it again.
+   Temperatures are in this Home Assistant's own unit, as a real thermostat's are.
 2. If no TV is paired, it pretends to be one: it answers the pairing calls the integration makes (/info and /pair, as
    the app's PairServer does) on --port, and walks the integration's config flow over the REST API. Home Assistant
    must be able to reach this machine as --tv-host: host.docker.internal from Docker Desktop. --save writes the TV's
@@ -43,8 +46,6 @@ STATES = {
     "lock.front_door": ("locked", {"friendly_name": "Front Door"}),
     "light.hall": ("on", {"friendly_name": "Hall"}),
     "script.good_night": ("off", {"friendly_name": "Good night"}),
-    "climate.hallway": ("heat", {"friendly_name": "Hallway Thermostat", "current_temperature": 68, "temperature": 70,
-                                 "hvac_action": "heating", "temperature_unit": "°F"}),
     "camera.front_door": ("idle", {"friendly_name": "Front Door"}),
     "camera.driveway": ("idle", {"friendly_name": "Driveway"}),
     "binary_sensor.front_door_motion": ("off", {"friendly_name": "Front Door Motion", "device_class": "motion"}),
@@ -53,6 +54,54 @@ STATES = {
     "sensor.hall_temperature": ("68.4", {"friendly_name": "Hall Temperature", "unit_of_measurement": "°F",
                                          "device_class": "temperature"}),
 }
+# Air quality: one of each kind the screen treats differently.
+AIR = {
+    "sensor.den_co2": ("612", {"friendly_name": "Den CO2", "unit_of_measurement": "ppm",
+                               "device_class": "carbon_dioxide", "state_class": "measurement"}),
+    "sensor.den_pm25": ("8.2", {"friendly_name": "Den PM2.5", "unit_of_measurement": "µg/m³",
+                                "device_class": "pm25", "state_class": "measurement"}),
+    # A VOC index (Sensirion's, 1 to 500) has no device class: it shows, without a colour.
+    "sensor.den_voc_index": ("112", {"friendly_name": "Den VOC index", "state_class": "measurement"}),
+    # No state class: no long-term statistics, so its graph comes from history.
+    "sensor.porch_aqi": ("42", {"friendly_name": "Porch AQI", "device_class": "aqi"}),
+}
+# Three thermostats unlike each other, in °F; converted when this Home Assistant is metric.
+CLIMATE = {
+    # Heat and cool, with a range, a fan and presets: like an ecobee or a Nest.
+    "climate.upstairs": ("heat_cool", {
+        "friendly_name": "Upstairs", "hvac_modes": ["off", "heat", "cool", "heat_cool"], "current_temperature": 71.5,
+        "target_temp_low": 68, "target_temp_high": 76, "current_humidity": 41, "hvac_action": "cooling",
+        "fan_mode": "auto", "fan_modes": ["auto", "on"], "preset_mode": "home",
+        "preset_modes": ["home", "away", "sleep"], "min_temp": 45, "max_temp": 95, "target_temp_step": 1,
+        "supported_features": 410}),
+    # Heat only, as a generic_thermostat or a Z-Wave one is.
+    "climate.hallway": ("heat", {
+        "friendly_name": "Hallway Thermostat", "hvac_modes": ["off", "heat"], "current_temperature": 68,
+        "temperature": 70, "hvac_action": "heating", "min_temp": 45, "max_temp": 90, "supported_features": 385}),
+    # No hvac_action: plenty of integrations don't say what the system is doing.
+    "climate.garage_heater": ("heat", {
+        "friendly_name": "Garage Heater", "hvac_modes": ["off", "heat"], "current_temperature": 55, "temperature": 50,
+        "min_temp": 40, "max_temp": 80, "supported_features": 385}),
+}
+TEMPERATURES = ("current_temperature", "temperature", "target_temp_low", "target_temp_high", "min_temp", "max_temp")
+
+
+def climates(celsius: bool) -> dict:
+    """The stand-in thermostats in this Home Assistant's unit: climate attributes are always in the system's."""
+    if not celsius:
+        return CLIMATE
+    out = {}
+    for entity_id, (state, attributes) in CLIMATE.items():
+        a = dict(attributes)
+        for key in TEMPERATURES:
+            if key in a:
+                a[key] = round((a[key] - 32) * 5 / 9 * 2) / 2
+        if "target_temp_step" in a:
+            a["target_temp_step"] = 0.5
+        out[entity_id] = (state, a)
+    return out
+
+
 # Only when the Home Assistant has no Apex of its own.
 APEX = {
     "sensor.apex_temp": ("78.9", {"friendly_name": "Apex Temp", "unit_of_measurement": "°F",
@@ -84,7 +133,8 @@ class Ha:
 def seed(ha: Ha) -> None:
     states = ha.call("GET", "/api/states")
     have_apex = any("apex_probe_type" in s["attributes"] for s in states)
-    todo = {**STATES, **({} if have_apex else APEX)}
+    celsius = ha.call("GET", "/api/config")["unit_system"]["temperature"] == "°C"
+    todo = {**STATES, **climates(celsius), **AIR, **({} if have_apex else APEX)}
     for entity_id, (state, attributes) in todo.items():
         ha.call("POST", f"/api/states/{entity_id}", {"state": state, "attributes": attributes})
     print(f"set {len(todo)} stand-in states" + (" (this Home Assistant has its own Apex)" if have_apex else ""))
@@ -162,6 +212,17 @@ STARTER = {
     "cameras": ["camera.front_door", "camera.driveway"],
     "tank": [],
     "solar": None,
+    "screens": [
+        {"id": "weather", "type": "weather"},
+        {"id": "solar", "type": "solar"},
+        {"id": "tank", "type": "tank"},
+        {"id": "cameras", "type": "cameras"},
+        {"id": "thermostat", "type": "thermostat", "title": "Thermostats",
+         "climates": ["climate.upstairs", "climate.hallway", "climate.garage_heater"],
+         "sensors": ["sensor.hall_temperature"]},
+        {"id": "air_quality", "type": "air_quality", "title": "Air",
+         "sensors": ["sensor.den_co2", "sensor.den_pm25", "sensor.den_voc_index", "sensor.porch_aqi"]},
+    ],
 }
 
 

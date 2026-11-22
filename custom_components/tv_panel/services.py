@@ -1,29 +1,50 @@
-"""tv_panel.show: open a page or one camera on the TV, from any automation or script."""
+"""tv_panel.show: open a screen or one camera on the TV, from any automation or script.
+
+"screen" is any of the TV's screens, by id. It was "page" before 0.7.0: automations that say page still work, and the
+action lists only screen.
+"""
 
 from __future__ import annotations
 
 import asyncio
 import logging
 
-from homeassistant.config_entries import ConfigEntryState
+from homeassistant.config_entries import ConfigEntry, ConfigEntryState
 from homeassistant.core import HomeAssistant, ServiceCall
 from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 from homeassistant.helpers import config_validation as cv, device_registry as dr
 import voluptuous as vol
 
+from . import model
 from .const import DOMAIN
-from .tv_link import CAMERA, PAGES, async_open, page_link
+from .tv_link import CAMERA, SCREENS, async_open, screen_link
 
 _LOGGER = logging.getLogger(__name__)
 
 SHOW = "show"
-SHOW_SCHEMA = vol.Schema(
-    {
-        vol.Required("page"): vol.In([*PAGES, CAMERA]),
-        vol.Optional("camera"): cv.entity_domain("camera"),
-        vol.Optional("wake", default=False): cv.boolean,
-        vol.Optional("device_id"): vol.All(cv.ensure_list, [cv.string]),
-    }
+ONE_SCREEN = "Say which screen to show, as screen (page is its old name)."
+
+
+def _one_screen(data: dict) -> dict:
+    """Exactly one of screen and its old name page, read as screen."""
+    if ("screen" in data) == ("page" in data):
+        raise vol.Invalid(ONE_SCREEN)
+    if "page" in data:
+        data = {k: v for k, v in data.items() if k != "page"} | {"screen": data["page"]}
+    return data
+
+
+SHOW_SCHEMA = vol.All(
+    vol.Schema(
+        {
+            vol.Optional("screen"): cv.string,
+            vol.Optional("page"): vol.In([*SCREENS, CAMERA]),
+            vol.Optional("camera"): cv.entity_domain("camera"),
+            vol.Optional("wake", default=False): cv.boolean,
+            vol.Optional("device_id"): vol.All(cv.ensure_list, [cv.string]),
+        }
+    ),
+    _one_screen,
 )
 
 
@@ -51,15 +72,19 @@ def _entries(hass: HomeAssistant, device_ids: list[str] | None) -> list:
 
 async def _show(call: ServiceCall) -> None:
     """On every TV it's for. Without devices chosen, a TV that can't be reached is logged, as long as one was."""
-    page = call.data["page"]
-    if page == CAMERA and not call.data.get("camera"):
+    screen = call.data["screen"]
+    if screen == CAMERA and not call.data.get("camera"):
         raise ServiceValidationError("Choose the camera to show full screen.")
-    link = page_link(page, call.data.get("camera"))
+    link = screen_link(screen, call.data.get("camera"))
     entries = _entries(call.hass, call.data.get("device_id"))
-    results = await asyncio.gather(
-        *(async_open(call.hass, e, link, wake=call.data["wake"], close_screensaver=True) for e in entries),
-        return_exceptions=True,
-    )
+
+    async def show(entry: ConfigEntry) -> bool:
+        ids = [sc["id"] for sc in model.settings(call.hass, entry.options)["screens"]]
+        if screen != CAMERA and screen not in ids:
+            raise ServiceValidationError(f"{entry.title} has no screen {screen}: it has {', '.join(ids) or 'none'}.")
+        return await async_open(call.hass, entry, link, wake=call.data["wake"], close_screensaver=True)
+
+    results = await asyncio.gather(*(show(e) for e in entries), return_exceptions=True)
     failed = [(e, r) for e, r in zip(entries, results, strict=True) if isinstance(r, BaseException)]
     for _, err in failed:
         if not isinstance(err, HomeAssistantError):

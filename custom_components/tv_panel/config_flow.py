@@ -32,7 +32,7 @@ class TvPanelConfigFlow(ConfigFlow, domain=DOMAIN):
         self._name = "TV"
 
     async def async_step_zeroconf(self, discovery_info: ZeroconfServiceInfo) -> ConfigFlowResult:
-        """The TV announces itself while its TV Panel page is open."""
+        """The TV announces itself while TV Panel is open on it."""
         tv_id = discovery_info.properties.get("id")
         if not tv_id:
             return self.async_abort(reason="cannot_connect")
@@ -46,7 +46,7 @@ class TvPanelConfigFlow(ConfigFlow, domain=DOMAIN):
         return await self.async_step_pair()
 
     async def async_step_user(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
-        """Typed in: the address the TV shows on its TV Panel page."""
+        """Typed in: the address TV Panel shows on the TV."""
         errors: dict[str, str] = {}
         if user_input is not None:
             host, _, port = user_input[CONF_HOST].strip().partition(":")
