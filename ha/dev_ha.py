@@ -102,6 +102,21 @@ def climates(celsius: bool) -> dict:
     return out
 
 
+def in_unit(states: dict, celsius: bool) -> dict:
+    """The weather and temperature stand-ins in this Home Assistant's unit, so they match its thermostats."""
+    if not celsius:
+        return states
+    out = {}
+    for entity_id, (state, attributes) in states.items():
+        a = dict(attributes)
+        if a.get("temperature_unit") == "°F":
+            a["temperature"], a["temperature_unit"] = round((a["temperature"] - 32) * 5 / 9), "°C"
+        if a.get("unit_of_measurement") == "°F":
+            state, a["unit_of_measurement"] = f"{(float(state) - 32) * 5 / 9:.1f}", "°C"
+        out[entity_id] = (state, a)
+    return out
+
+
 # Only when the Home Assistant has no Apex of its own.
 APEX = {
     "sensor.apex_temp": ("78.9", {"friendly_name": "Apex Temp", "unit_of_measurement": "°F",
@@ -134,7 +149,7 @@ def seed(ha: Ha) -> None:
     states = ha.call("GET", "/api/states")
     have_apex = any("apex_probe_type" in s["attributes"] for s in states)
     celsius = ha.call("GET", "/api/config")["unit_system"]["temperature"] == "°C"
-    todo = {**STATES, **climates(celsius), **AIR, **({} if have_apex else APEX)}
+    todo = {**in_unit(STATES, celsius), **climates(celsius), **AIR, **({} if have_apex else APEX)}
     for entity_id, (state, attributes) in todo.items():
         ha.call("POST", f"/api/states/{entity_id}", {"state": state, "attributes": attributes})
     print(f"set {len(todo)} stand-in states" + (" (this Home Assistant has its own Apex)" if have_apex else ""))

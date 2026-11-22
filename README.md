@@ -68,7 +68,7 @@ as `homeassistant.local`, the TV uses the address the pairing came from instead.
 
 ## Configure in Home Assistant
 
-![The TV Panel page in Home Assistant: a live preview of the TV's row, and its chips](https://raw.githubusercontent.com/denov/home-assistant-tv-panel/main/docs/settings-page.png)
+![The TV Panel page in Home Assistant: a live preview of the TV's row, its chips, and its screens](https://raw.githubusercontent.com/denov/home-assistant-tv-panel/main/docs/settings-page.png)
 
 Choose **TV Panel** in the sidebar (admins only). With more than one TV, pick it at the top. The page shows a preview
 of the TV's row, live from your Home Assistant, and these settings:
@@ -109,8 +109,8 @@ The chip still shows the readings, and the tank screen still opens
 [by voice](#by-voice-assist).
 
 Every press also fires the event `tv_panel_chip_pressed`, with `chip` (the entity id, or `cameras` / `apex` for the
-groups), `tv`, `entry_id` and `action` (`screen`, `toggle`, `run`, `perform` or `none`; before 0.7.0 a screen was
-`page`), so an automation can act on any chip, even one set to do nothing:
+groups), `tv`, `entry_id` and `action` (`screen`, `toggle`, `run`, `perform` or `none`), so an automation can act on
+any chip, even one set to do nothing:
 
 ```yaml
 triggers:
@@ -122,10 +122,6 @@ triggers:
 
 The TV's device also has a **Widget row** switch: off hides the row. The page has it at the top, and automations can
 flip it like any switch.
-
-The first time, the page starts from the older setup: entities labelled **tv_widget**, and
-`input_text.tv_camera_order`. The switch starts from `input_boolean.tv_widgets`. Until you save, the app keeps using
-those, and it uses them too on a TV set up without the integration (see [Helper scripts](#helper-scripts)).
 
 The **Solar** chip (an Enphase Envoy power sensor) opens the solar screen. It's built for Enphase: it needs an Enphase
 Envoy and Home Assistant's [Enphase Envoy integration](https://www.home-assistant.io/integrations/enphase_envoy/), plus
@@ -187,11 +183,11 @@ with heating and cooling marked along the bottom. Up to 8 other readings, such a
 the bottom. A thermostat without its own current temperature uses the first temperature among them. Temperatures are
 in Home Assistant's unit. It only shows: the remote changes nothing.
 
-**Air quality screen:** a tile for each sensor, up to 12, with its room and name ("Den · CO2": the device's
-name is dropped, as on the chips), its value and the last 24 hours. Any sensor
-works; the page suggests the ones Home Assistant knows measure air (AQI, PM1, PM2.5, PM10, CO₂, CO, VOC, NO₂, NO, ozone, SO₂), by
-room, and search finds any other, such as humidity or temperature. A tile is coloured only where the sensor's device
-class and unit are ones these levels cover:
+**Air quality screen:** a tile for each sensor, up to 12, with its room and name ("Den · CO2": the device's name is
+dropped, as on the chips), its value and the last 24 hours. Any sensor works; the page suggests the ones Home
+Assistant knows measure air (AQI, PM1, PM2.5, PM10, CO₂, CO, VOC, NO₂, NO, ozone, SO₂), by room, and search finds any
+other, such as humidity or temperature. A tile is coloured only where the sensor's device class and unit are ones
+these levels cover:
 
 | Device class | Unit | Levels |
 |---|---|---|
@@ -283,8 +279,7 @@ Icons: [Material Design Icons](https://pictogrammers.com/library/mdi/) (Pictogra
 
 `tv_panel.show` opens a screen on the TV from any automation or script. `screen` is the screen's id (see
 [Screens](#screens)): `weather`, `solar`, `tank`, `cameras` (the grid), one you added such as `thermostat`, or
-`camera` (one camera full screen, with `camera`). Before 0.7.0 it was called `page`, which still works. For example,
-show the front door when the doorbell rings:
+`camera` (one camera full screen, with `camera`). For example, show the front door when the doorbell rings:
 
 ```yaml
 triggers:
@@ -365,19 +360,17 @@ To have messages pause what's playing, turn on the TV's **Pause for messages** s
 Configuration). It's off unless you turn it on.
 
 The TV Panel app keeps a connection open to Home Assistant for its messages, so it shows a quiet "TV Panel" entry in
-the TV's notifications. Messages need app 0.6.0 or later. They don't need the Android TV Remote integration.
+the TV's notifications. Messages don't need the Android TV Remote integration.
 
 ## Troubleshooting
 
 - **Diagnostics:** **Settings** → **Devices & services** → **TV Panel** → **⋮** → **Download diagnostics**. It has the
   TV's settings, whether its user is an admin, whether the TV is listening for messages, the Android TV Remote entities
   it uses and what its chip row reads. It leaves out the TV's address, its user and your inverter serials.
-- **A TV paired before 0.6.0** got an admin user, because older apps rendered their own templates. With app 0.6.0 the
-  integration makes it a normal user the first time the TV asks for its chips. An older app keeps working as before.
 - **The TV got a new address:** nothing to do. The integration follows it from the TV's own requests, so
   `tv_panel.show` still finds the TV's Android TV Remote.
-- **Messages don't show:** check diagnostics for `"listening": 1`. A 0 means the TV is off or its app is older than
-  0.6.0. After the TV restarts, the app connects again on its own. If it doesn't, open TV Panel once from the app grid.
+- **Messages don't show:** check diagnostics for `"listening": 1`. A 0 means the TV is off or its app isn't connected.
+  After the TV restarts, the app connects again on its own. If it doesn't, open TV Panel once from the app grid.
 
 ## License
 

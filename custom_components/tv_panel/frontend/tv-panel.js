@@ -275,7 +275,7 @@ class TvPanelSettings extends HTMLElement {
 
   /** What the screen shows and needs, its settings, how to open it, and Remove. */
   pane(sc) {
-    const how = `<p class="hint">Open it with a chip's OK, or from an automation or a voice command with
+    const how = `<p class="hint how">Open it with a chip's OK, or from an automation or a voice command with
         <code>tv_panel.show</code> and <code>screen: ${esc(sc.id)}</code> (see the README). Its link is
         <code>${esc(chips.screenLink(sc))}</code>.</p>`;
     return `${this.paneBody(sc)}${how}
@@ -791,6 +791,7 @@ const CSS = `
   .toggle input { width: 18px; height: 18px; accent-color: var(--primary-color); }
   .hint, .sub { color: var(--secondary-text-color); font-size: 13px; }
   .hint { margin: 0 0 12px; }
+  .hint.how { margin-top: 16px; }
   code { font-size: 12px; overflow-wrap: anywhere; }
   a { color: var(--primary-color); }
   .note { background: rgba(255, 201, 74, 0.15); border: 1px solid rgba(255, 201, 74, 0.5); border-radius: 8px; padding: 10px 12px;
