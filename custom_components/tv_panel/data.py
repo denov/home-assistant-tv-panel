@@ -173,8 +173,19 @@ CLIMATE_ATTRIBUTES = (
 )
 
 
+def _room_and_name(hass: HomeAssistant, entity_id: str, attributes: dict[str, Any]) -> tuple[str | None, str | None]:
+    """A sensor's room, and its name without the room and its device at the front, as the chips drop them: "Air
+    Monitor CO2" on the device "Air Monitor" is "CO2"; "Probe 2 Office Temperature" on "Probe 2", in the Office, is
+    "Temperature". So a tile has room for what matters."""
+    area = _area(hass, entity_id)
+    name = _without(attributes.get(ATTR_FRIENDLY_NAME), area)
+    return area, _without(_without(name, _device_name(hass, entity_id)), area)
+
+
 def thermostat(hass: HomeAssistant, entry: ConfigEntry, screen: dict[str, Any]) -> dict[str, Any]:
-    """A thermostat screen: each thermostat's state and standard attributes, and its other readings."""
+    """A thermostat screen: each thermostat's state, area and standard attributes, and its other readings, room
+    first (area and label, see _room_and_name), with "tiles": the readings grouped as the screen puts them side by
+    side (model.tiles)."""
     climates = []
     for e in screen["climates"]:
         state, a = _read(hass, e)
@@ -183,16 +194,21 @@ def thermostat(hass: HomeAssistant, entry: ConfigEntry, screen: dict[str, Any]) 
                 "id": e,
                 "name": a.get(ATTR_FRIENDLY_NAME),
                 "state": state,
+                "area": _area(hass, e),
                 "attributes": {k: a[k] for k in CLIMATE_ATTRIBUTES if a.get(k) is not None},
             }
         )
     sensors = []
     for e in screen.get("sensors", []):
         state, a = _read(hass, e)
+        area, label = _room_and_name(hass, e, a)
         sensors.append(
             {
                 "id": e,
+                "area": area,
+                # The whole name, which the app 0.7.0 shows alone, and the label the room goes before.
                 "name": a.get(ATTR_FRIENDLY_NAME),
+                "label": label,
                 "state": state,
                 "unit": a.get(ATTR_UNIT_OF_MEASUREMENT),
                 "dc": a.get("device_class"),
@@ -203,6 +219,7 @@ def thermostat(hass: HomeAssistant, entry: ConfigEntry, screen: dict[str, Any]) 
         "unit": hass.config.units.temperature_unit,
         "climates": climates,
         "sensors": sensors,
+        "tiles": model.tiles(screen),
     }
 
 
@@ -227,15 +244,12 @@ def _without(name: str | None, prefix: str | None) -> str | None:
 
 
 def air_quality(hass: HomeAssistant, entry: ConfigEntry, screen: dict[str, Any]) -> dict[str, Any]:
-    """An air quality screen: each sensor with its room first, and what it measures (device and state class). The
-    name drops the room and the device from its front ("Air Monitor CO2" on the device "Air Monitor" is "CO2"; "Probe 2
-    Office Temperature" on "Probe 2", in the Office, is "Temperature"), as the chips do, so a tile has room for
-    what matters."""
+    """An air quality screen: each sensor with its room first (see _room_and_name), and what it measures (device and
+    state class), with "tiles": the sensors grouped as the screen puts them side by side (model.tiles)."""
     sensors = []
     for e in screen["sensors"]:
         state, a = _read(hass, e)
-        area = _area(hass, e)
-        name = _without(_without(_without(a.get(ATTR_FRIENDLY_NAME), area), _device_name(hass, e)), area)
+        area, name = _room_and_name(hass, e, a)
         sensors.append(
             {
                 "id": e,
@@ -247,7 +261,7 @@ def air_quality(hass: HomeAssistant, entry: ConfigEntry, screen: dict[str, Any])
                 "sc": a.get("state_class"),
             }
         )
-    return {"title": model.screen_title(screen), "sensors": sensors}
+    return {"title": model.screen_title(screen), "sensors": sensors, "tiles": model.tiles(screen)}
 
 
 # Those for one of the TV's screens: /data/thermostat?screen=<id>.

@@ -58,6 +58,26 @@ final class SolarViews {
             c.drawText(s, x, y, text);
         }
 
+        /**
+         * Runs of text in their colours, right-aligned at {@code right} on {@code base}, 12 sp, when they fit right of
+         * {@code minX}.
+         */
+        void summary(Canvas c, java.util.List<Thermostat.Part> parts, float right, float base, float minX) {
+            if (parts == null || parts.isEmpty()) return;
+            text.setTextSize(sp(12));
+            text.setTypeface(regular);
+            text.setTextAlign(Paint.Align.LEFT);
+            float total = 0;
+            for (Thermostat.Part p : parts) total += text.measureText(p.text);
+            if (right - total < minX) return;
+            float x = right - total;
+            for (Thermostat.Part p : parts) {
+                text.setColor(p.colour);
+                c.drawText(p.text, x, base, text);
+                x += text.measureText(p.text);
+            }
+        }
+
         void icon(Canvas c, String name, int colour, float cx, float cy, float size) {
             Drawable d = Icons.tinted(getContext(), name, colour);
             int h = Math.round(size / 2);

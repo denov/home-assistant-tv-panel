@@ -29,6 +29,25 @@ final class Series {
         return ZoneId.systemDefault();
     }
 
+    /** The statistics' period. */
+    private static final long PERIOD = 5 * 60_000L;
+
+    /**
+     * Statistics with a NaN row where they stop: a period with no row is one the sensor didn't report in (it was
+     * unavailable), not the last value held, unlike history, whose rows are changes. After the last row too, when it's
+     * more than three periods before {@code now} (a period's row comes a little after it ends).
+     */
+    static List<Solar.Stat> gaps(List<Solar.Stat> rows, long period, long now) {
+        List<Solar.Stat> out = new ArrayList<>();
+        for (int i = 0; i < rows.size(); i++) {
+            Solar.Stat s = rows.get(i);
+            out.add(s);
+            long next = i + 1 < rows.size() ? rows.get(i + 1).start : now - 2 * period;
+            if (next - s.start > period * 3 / 2) out.add(new Solar.Stat(s.start + period, Double.NaN));
+        }
+        return out;
+    }
+
     /** Each id's values since {@code fromMs}: statistics' means where there are any, else its history. */
     static Map<String, List<Solar.Stat>> fetch(HaSocket ws, List<String> ids, long fromMs) throws Exception {
         Map<String, List<Solar.Stat>> out = new HashMap<>();
@@ -45,7 +64,7 @@ final class Series {
         for (String id : ids) {
             List<Solar.Stat> s = Solar.series(st, id, "mean");
             if (s.isEmpty()) without.add(id);
-            else out.put(id, s);
+            else out.put(id, gaps(s, PERIOD, System.currentTimeMillis()));
         }
         if (without.isEmpty()) return out;
         JSONObject h = history(ws, without, fromMs, false);
@@ -79,5 +98,28 @@ final class Series {
             out.add(new Solar.Stat(Math.round(sec * 1000), Ha.isNumber(s) ? Double.parseDouble(s) : Double.NaN));
         }
         return out;
+    }
+
+    /**
+     * The lowest and highest value since {@code from}, {lo, hi}: the row the window starts with counts, older ones
+     * don't. Null without a number.
+     */
+    static double[] lowHigh(List<Solar.Stat> rows, long from) {
+        double lo = Double.MAX_VALUE, hi = -Double.MAX_VALUE;
+        for (int i = 0; rows != null && i < rows.size(); i++) {
+            Solar.Stat s = rows.get(i);
+            if (s.start < from && i + 1 < rows.size() && rows.get(i + 1).start <= from) continue;
+            if (Double.isNaN(s.value)) continue;
+            lo = Math.min(lo, s.value);
+            hi = Math.max(hi, s.value);
+        }
+        return lo > hi ? null : new double[] {lo, hi};
+    }
+
+    /** The value at {@code t}: the last row at or before it, held until the next. NaN before the first, or in a gap. */
+    static double at(List<Solar.Stat> rows, long t) {
+        double v = Double.NaN;
+        for (int i = 0; rows != null && i < rows.size() && rows.get(i).start <= t; i++) v = rows.get(i).value;
+        return v;
     }
 }

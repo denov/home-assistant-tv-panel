@@ -7,12 +7,14 @@ Now (0.7.0):
     solar:   the solar screen's panel layout, or None
     screens: the TV's full-screen views, in order: [{"id": "weather", "type": "weather"}, ...,
              {"id": "thermostat", "type": "thermostat", "title": "Upstairs", "climates": [...], "sensors": [...]},
-             {"id": "air_quality", "type": "air_quality", "title": "Air", "sensors": [...]}]
+             {"id": "air_quality", "type": "air_quality", "title": "Air", "sensors": [...], "joined": [...]}]
 A chip's "label" is optional: without it the TV uses the entity's name. Its "ok" is what OK on it does (OK below).
 
 The four built-in screens (weather, solar, tank, cameras) appear at most once, with their type as their id, and keep
 their settings in the top-level keys, where apps before 0.7.0 read them. Thermostat and air quality screens can be
 added more than once; each has an id made once when it's added, which chips, tv_panel.show and voice links use.
+Their sensors are tiles, one sensor a tile, except that each sensor in the optional "joined" shares the tile of the
+sensor before it, side by side (tiles()). A screen without joined sensors has no "joined" key.
 Without "screens" (anything saved before 0.7.0) the TV has the four built-in ones.
 
 0.2.0 saved a flat "entities" list and a "camera_order"; before the integration there was the tv_widget label and
@@ -44,6 +46,8 @@ MAX_CLIMATES = 4
 MAX_AIR_SENSORS = 12
 # A thermostat screen's other readings, along its bottom.
 MAX_READINGS = 8
+# Sensors side by side on one tile, on either screen. MAX_READINGS and MAX_AIR_SENSORS count sensors, not tiles.
+MAX_PER_TILE = 3
 # A screen's id: it goes in links (tvpanel://screen/<id>) and in tv_panel.show.
 SCREEN_ID = re.compile(r"^[a-z0-9_]+$")
 CAMERA = "camera"
@@ -323,6 +327,28 @@ def _entities(name: str, domain: str, value: Any, least: int, most: int, what: s
         raise vol.Invalid(f"{name}: {err}") from err
 
 
+def tiles(screen: dict[str, Any]) -> list[list[str]]:
+    """A screen's sensors as its tiles, in order: [["sensor.a"], ["sensor.b", "sensor.c"]] when sensor.c is joined."""
+    joined = set(screen.get("joined") or [])
+    out: list[list[str]] = []
+    for e in screen.get("sensors") or []:
+        if out and e in joined:
+            out[-1].append(e)
+        else:
+            out.append([e])
+    return out
+
+
+def _joined(name: str, sensors: list[str], value: Any) -> list[str]:
+    """The sensors that share the tile of the one before them, in the list's order. Ids that aren't listed, the first
+    sensor and repeats are dropped without a word: the page leaves them behind when a sensor is removed or moved."""
+    items = list(value) if isinstance(value, list | tuple) else [] if value is None else [value]
+    joined = [e for e in dict.fromkeys(sensors[1:]) if e in items and e != sensors[0]]
+    if any(len(tile) > MAX_PER_TILE for tile in tiles({"sensors": sensors, "joined": joined})):
+        raise vol.Invalid(f"{name}: at most {MAX_PER_TILE} sensors on a tile")
+    return joined
+
+
 def _screen(value: Any) -> dict[str, Any]:
     """One screen, checked by its type. A mistake names the screen (by its title, or its id) and what's wrong."""
     if not isinstance(value, dict):
@@ -349,6 +375,8 @@ def _screen(value: Any) -> dict[str, Any]:
         out["sensors"] = _entities(name, "sensor", value.get("sensors"), 0, MAX_READINGS, "sensor")
     else:
         out["sensors"] = _entities(name, "sensor", value.get("sensors"), 1, MAX_AIR_SENSORS, "sensor")
+    if joined := _joined(name, out["sensors"], value.get("joined")):
+        out["joined"] = joined
     return out
 
 

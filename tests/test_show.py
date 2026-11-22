@@ -20,18 +20,26 @@ PLAYER = "media_player.living_room_tv"
 REMOTE = "remote.living_room_tv"
 
 
-def _record(hass: HomeAssistant, domain: str, service: str) -> list[ServiceCall]:
+def _record(hass: HomeAssistant, domain: str, service: str, log: list | None = None, then=None) -> list[ServiceCall]:
+    """Calls to a service, also in order in log (with the TV's state when it came) and then calling then()."""
     calls: list[ServiceCall] = []
 
     async def handle(call: ServiceCall) -> None:
         calls.append(call)
+        if log is not None:
+            log.append((f"{domain}.{service}", hass.states.get(PLAYER).state))
+        if then is not None:
+            then()
 
     hass.services.async_register(domain, service, handle)
     return calls
 
 
-def _android_tv_remote(hass: HomeAssistant, host: str = "192.168.1.50", state: str = "on") -> dict:
-    """The Android TV Remote integration's entry for the TV, its two entities, and what they're asked to do."""
+def _android_tv_remote(
+    hass: HomeAssistant, host: str = "192.168.1.50", state: str = "on", wakes: bool = True
+) -> dict:
+    """The Android TV Remote integration's entry for the TV, its two entities, and what they're asked to do. Turned
+    on, the TV comes on a moment later, unless wakes is False."""
     atv = MockConfigEntry(domain="androidtv_remote", data={"host": host, "name": "Living room TV"})
     atv.add_to_hass(hass)
     reg = er.async_get(hass)
@@ -40,16 +48,27 @@ def _android_tv_remote(hass: HomeAssistant, host: str = "192.168.1.50", state: s
                                 suggested_object_id="living_room_tv")
     hass.states.async_set(PLAYER, state)
     hass.states.async_set(REMOTE, state)
+    log: list = []
+
+    def come_on() -> None:
+        if wakes:
+            hass.loop.call_later(0.05, lambda: [hass.states.async_set(e, "on") for e in (PLAYER, REMOTE)])
+
     return {
-        "play": _record(hass, "media_player", "play_media"),
-        "key": _record(hass, "remote", "send_command"),
-        "on": _record(hass, "remote", "turn_on"),
+        "play": _record(hass, "media_player", "play_media", log),
+        "key": _record(hass, "remote", "send_command", log),
+        "on": _record(hass, "remote", "turn_on", log, come_on),
+        "log": log,
     }
 
 
 @pytest.fixture(autouse=True)
 def no_wait():
-    with patch("custom_components.tv_panel.tv_link.SCREENSAVER_DELAY", 0):
+    with (
+        patch("custom_components.tv_panel.tv_link.SCREENSAVER_DELAY", 0),
+        patch("custom_components.tv_panel.tv_link.WAKE_SETTLE", 0),
+        patch("custom_components.tv_panel.tv_link.WAKE_TIMEOUT", 2),
+    ):
         yield
 
 
@@ -93,11 +112,17 @@ async def test_page_is_the_old_name_for_screen(hass: HomeAssistant) -> None:
     assert sent["play"][0].data["media_content_id"] == "tvpanel://solar"
 
 
-@pytest.mark.parametrize("data", [{}, {"screen": "solar", "page": "weather"}])
-async def test_show_needs_one_screen(hass: HomeAssistant, data: dict) -> None:
+@pytest.mark.parametrize(
+    ("data", "says"),
+    [
+        ({}, r"^Say which screen to show, as screen\.$"),
+        ({"screen": "solar", "page": "weather"}, "not both screen and page"),
+    ],
+)
+async def test_show_needs_one_screen(hass: HomeAssistant, data: dict, says: str) -> None:
     await paired_tv(hass)
     _android_tv_remote(hass)
-    with pytest.raises(vol.Invalid, match="screen"):
+    with pytest.raises(vol.Invalid, match=says):
         await _show(hass, **data)
 
 
@@ -114,10 +139,30 @@ async def test_a_tv_in_standby_stays_off_unless_woken(hass: HomeAssistant) -> No
     await _show(hass, screen="weather")
     assert sent["play"] == [] and sent["key"] == [] and sent["on"] == []
 
-    # wake: turn the TV on with the screen as its first app.
+
+
+async def test_wake_turns_the_tv_on_then_opens_the_screen(hass: HomeAssistant) -> None:
+    """A woken TV goes to its home screen as it comes on, on top of a link sent with the power key (the BRAVIA did,
+    50 ms after it). So the TV is turned on by itself, and the screen opened once the TV is on, as for a TV that's on.
+    """
+    await paired_tv(hass)
+    sent = _android_tv_remote(hass, state="off")
     await _show(hass, screen="cameras", wake=True)
-    assert [(c.data["entity_id"], c.data["activity"]) for c in sent["on"]] == [(REMOTE, "tvpanel://cameras")]
-    assert sent["play"] == []
+    assert [c.data for c in sent["on"]] == [{"entity_id": REMOTE}]
+    assert [c.data["media_content_id"] for c in sent["play"]] == ["tvpanel://cameras"]
+    # In order, and the link only once Android TV Remote saw the TV on.
+    assert sent["log"] == [("remote.turn_on", "off"), ("media_player.play_media", "on"), ("remote.send_command", "on")]
+
+
+async def test_a_tv_that_doesnt_come_on_says_so(hass: HomeAssistant) -> None:
+    await paired_tv(hass)
+    sent = _android_tv_remote(hass, state="off", wakes=False)
+    with (
+        patch("custom_components.tv_panel.tv_link.WAKE_TIMEOUT", 0.1),
+        pytest.raises(HomeAssistantError, match="didn't turn on"),
+    ):
+        await _show(hass, screen="weather", wake=True)
+    assert len(sent["on"]) == 1 and sent["play"] == []
 
 
 async def test_without_android_tv_remote_it_says_what_to_add(hass: HomeAssistant) -> None:

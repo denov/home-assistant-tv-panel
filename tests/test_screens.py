@@ -84,6 +84,102 @@ def test_each_id_once_and_each_built_in_once() -> None:
         model.validate(_settings([BUILT_IN[0], BUILT_IN[0]]))
 
 
+# ---- sensors that share a tile ---------------------------------------------------------------------------------------
+
+OFFICE = {"id": "air_quality", "type": "air_quality", "title": "Office",
+          "sensors": ["sensor.office_temperature", "sensor.office_humidity", "sensor.office_co2", "sensor.porch_aqi"]}
+
+
+def test_sensors_can_share_a_tile() -> None:
+    """Each sensor in "joined" goes on the tile of the sensor just before it, side by side."""
+    screen = OFFICE | {"joined": ["sensor.office_humidity", "sensor.office_co2"]}
+    assert model.validate(_settings([screen]))["screens"] == [screen]
+    thermostat = UPSTAIRS | {"sensors": ["sensor.office_temperature", "sensor.office_humidity"],
+                             "joined": ["sensor.office_humidity"]}
+    assert model.validate(_settings([thermostat]))["screens"] == [thermostat]
+
+
+def test_joined_is_cleaned_quietly() -> None:
+    """The page can leave ids behind after a remove or a move: ones not listed, the first sensor, repeats. In the
+    list's order, not the order they were joined in."""
+    screen = OFFICE | {"joined": ["sensor.office_co2", "sensor.gone", "sensor.office_temperature",
+                                  "sensor.office_humidity", "sensor.office_co2"]}
+    saved = model.validate(_settings([screen]))["screens"][0]
+    assert saved["joined"] == ["sensor.office_humidity", "sensor.office_co2"]
+    assert saved["sensors"] == OFFICE["sensors"]
+
+
+def test_nothing_joined_saves_no_joined() -> None:
+    """A screen without joined sensors saves exactly what it did before there was joining."""
+    for joined in ([], ["sensor.gone"], ["sensor.office_temperature"]):
+        assert model.validate(_settings([OFFICE | {"joined": joined}]))["screens"] == [OFFICE], joined
+    assert model.validate(_settings([OFFICE]))["screens"] == [OFFICE]
+    hall = {"id": "hall", "type": "thermostat", "title": "Hall", "climates": ["climate.h"], "joined": ["sensor.x"]}
+    assert model.validate(_settings([hall]))["screens"] == [
+        {"id": "hall", "type": "thermostat", "title": "Hall", "climates": ["climate.h"], "sensors": []}
+    ]
+
+
+def test_at_most_three_sensors_on_a_tile() -> None:
+    three = OFFICE | {"joined": ["sensor.office_humidity", "sensor.office_co2"]}
+    model.validate(_settings([three]))
+    with pytest.raises(vol.Invalid, match="Office: at most 3 sensors on a tile"):
+        model.validate(_settings([three | {"joined": [*three["joined"], "sensor.porch_aqi"]}]))
+    # The limits on sensors count sensors, not tiles.
+    with pytest.raises(vol.Invalid, match="at most 12"):
+        model.validate(_settings([AIR | {"sensors": [f"sensor.s{i}" for i in range(13)],
+                                         "joined": [f"sensor.s{i}" for i in (1, 2, 4, 5, 7, 8, 10, 11)]}]))
+
+
+async def test_the_owners_saved_settings_round_trip_unchanged(hass: HomeAssistant, hass_ws_client) -> None:
+    """Settings saved before joining existed read, validate and save back exactly as they were: no new key."""
+    saved = {
+        "chips": [
+            {"type": "entity", "entity": "weather.home"},
+            {"type": "entity", "entity": "sensor.solar_production", "label": "Solar"},
+            {"type": "cameras"},
+            {"type": "tank"},
+            {"type": "entity", "entity": "cover.garage_door", "ok": {"action": "toggle", "confirm": True}},
+            {"type": "entity", "entity": "sensor.office_temperature", "label": "Office", "ok": {"action": "none"}},
+            {"type": "entity", "entity": "climate.office", "ok": {"action": "screen", "screen": "thermostat"}},
+        ],
+        "cameras": ["camera.front_door", "camera.driveway"],
+        "tank": ["sensor.tank_temperature", "sensor.tank_ph"],
+        "solar": {"arrays": [{"name": "Array 1", "panels": [{"id": "1", "x": 0, "y": 0, "w": 2, "h": 1}]}]},
+        "screens": [*BUILT_IN,
+                    {"id": "thermostat", "type": "thermostat", "title": "Office", "climates": ["climate.office"],
+                     "sensors": ["sensor.office_temperature", "sensor.office_humidity"]},
+                    OFFICE],
+    }
+    assert model.validate(saved, hass=hass, before=saved) == saved
+    assert model.settings(hass, saved) == saved
+    entry, _ = await paired_tv(hass, saved)
+    ws = await hass_ws_client(hass)
+    await ws.send_json({"id": 1, "type": "tv_panel/settings", "entry_id": entry.entry_id})
+    read = (await ws.receive_json())["result"]
+    assert read == saved | {"saved": True}
+    await ws.send_json({"id": 2, "type": "tv_panel/save", "entry_id": entry.entry_id,
+                        "settings": {k: v for k, v in read.items() if k != "saved"}})
+    assert (await ws.receive_json())["success"]
+    assert entry.options == saved
+
+
+async def test_joined_sensors_are_saved_and_read_back(hass: HomeAssistant, hass_ws_client) -> None:
+    entry, _ = await paired_tv(hass, _settings([OFFICE]))
+    ws = await hass_ws_client(hass)
+    page = _settings([OFFICE | {"joined": ["sensor.office_humidity", "sensor.gone"]}])
+    await ws.send_json({"id": 1, "type": "tv_panel/save", "entry_id": entry.entry_id, "settings": page})
+    assert (await ws.receive_json())["success"]
+    assert entry.options["screens"] == [OFFICE | {"joined": ["sensor.office_humidity"]}]
+    await ws.send_json({"id": 2, "type": "tv_panel/settings", "entry_id": entry.entry_id})
+    assert (await ws.receive_json())["result"]["screens"] == [OFFICE | {"joined": ["sensor.office_humidity"]}]
+    too_many = _settings([OFFICE | {"joined": OFFICE["sensors"][1:]}])
+    await ws.send_json({"id": 3, "type": "tv_panel/save", "entry_id": entry.entry_id, "settings": too_many})
+    msg = await ws.receive_json()
+    assert not msg["success"]
+    assert "Office: at most 3 sensors on a tile" in msg["error"]["message"]
+
+
 # ---- what OK opens ---------------------------------------------------------------------------------------------------
 
 

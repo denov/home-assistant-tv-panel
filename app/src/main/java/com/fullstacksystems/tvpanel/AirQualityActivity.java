@@ -7,11 +7,7 @@ import android.net.Uri;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
-import android.text.SpannableStringBuilder;
-import android.text.Spanned;
 import android.text.TextUtils;
-import android.text.style.ForegroundColorSpan;
-import android.text.style.RelativeSizeSpan;
 import android.util.TypedValue;
 import android.view.Gravity;
 import android.view.View;
@@ -27,9 +23,10 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 /**
- * An air quality screen: a tile per sensor (up to 12), each with its room and name, its value, a colour band where
- * Home Assistant says what it measures in a unit {@link AirQuality} covers, and its last 24 hours. Live values every
- * 30 s and the lines every 5 minutes, only while open. Back returns Home.
+ * An air quality screen: a tile per sensor (up to 12), each with its room and name, its value, a colour band and where
+ * it sits on that band's scale (where Home Assistant says what it measures in a unit {@link AirQuality} covers), which
+ * way it went in the last hour, and its last 24 hours ({@link SensorTileView}). Live values every 30 s and the lines
+ * every 5 minutes, only while open. Back returns Home.
  */
 public class AirQualityActivity extends Activity {
     private static final long LIVE_MS = 30_000;
@@ -50,15 +47,14 @@ public class AirQualityActivity extends Activity {
     private TextView message, updated;
     /** The screen's layout is built for one set of sensors; another set rebuilds it. */
     private String shape = "";
-    private final List<TileViews> tiles = new ArrayList<>();
+    /** Each sensor's tile, and its place on it (a tile can hold several). */
+    private final List<SensorTileView> tiles = new ArrayList<>();
+    private final List<Integer> parts = new ArrayList<>();
+    private Map<String, List<Solar.Stat>> lines;
+    private long linesFrom, linesTo;
 
     private volatile ZoneId zone;
     private AirQuality.Data data;
-
-    private static final class TileViews {
-        TextView title, value, band;
-        ThermostatViews.SparkView spark;
-    }
 
     @Override
     protected void onCreate(Bundle state) {
@@ -184,6 +180,7 @@ public class AirQualityActivity extends Activity {
         }
         StringBuilder sh = new StringBuilder(d.title).append('|');
         for (AirQuality.Tile t : shown) sh.append(t.id).append(',');
+        sh.append(d.groups);
         boolean rebuilt = !sh.toString().equals(shape);
         if (rebuilt) {
             shape = sh.toString();
@@ -194,49 +191,44 @@ public class AirQualityActivity extends Activity {
         message.setVisibility(View.GONE);
         screenView.setVisibility(View.VISIBLE);
         updated.setText("Updated " + ThermostatViews.clock(zone == null ? ZoneId.systemDefault() : zone));
-        for (int i = 0; i < shown.size(); i++) fill(shown.get(i), tiles.get(i));
+        for (int i = 0; i < shown.size() && i < tiles.size(); i++) fill(shown.get(i), tiles.get(i), parts.get(i));
         if (first || rebuilt) loadLines();
     }
 
-    private void fill(AirQuality.Tile t, TileViews v) {
-        v.title.setText(t.title());
-        SpannableStringBuilder s = new SpannableStringBuilder(t.value());
-        if (t.ok() && !t.unit.isEmpty()) {
-            int at = s.length();
-            s.append(" ").append(t.unit);
-            s.setSpan(new RelativeSizeSpan(0.4f), at, s.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
-            s.setSpan(new ForegroundColorSpan(SolarViews.SUB), at, s.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
-        }
-        v.value.setText(s);
-        AirQuality.Band b = t.band();
-        SpannableStringBuilder band = new SpannableStringBuilder();
-        if (b != null) {
-            band.append("● ").append(b.name);
-            band.setSpan(new ForegroundColorSpan(b.colour), 0, 1, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
-        }
-        v.band.setText(band);
+    private void fill(AirQuality.Tile t, SensorTileView v, int part) {
+        double now = t.ok() ? Double.parseDouble(t.state) : Double.NaN;
+        String dc = t.dc.isEmpty() ? null : t.dc;
+        v.setLive(part, t.room(), t.label(), t.value(), t.ok() ? t.unit : "", t.band(),
+                dc == null ? null : AirQuality.scale(dc, t.unit),
+                dc == null ? Double.NaN : AirQuality.position(dc, t.unit, now));
+        // Only once its rows are here: a sensor added since the last fetch says Loading, not "No history yet".
+        if (lines == null || !lines.containsKey(t.id)) return;
+        List<Solar.Stat> rows = lines.get(t.id);
+        String[] sum = AirQuality.summary(rows, now, linesFrom, linesTo);
+        v.setLines(part, rows, linesFrom, linesTo, zone == null ? ZoneId.systemDefault() : zone, sum[0], sum[1],
+                sum[2]);
     }
 
     private void showLines(Map<String, List<Solar.Stat>> lines, long from, long to) {
         AirQuality.Data d = data;
         if (d == null) return;
+        this.lines = lines;
+        linesFrom = from;
+        linesTo = to;
         List<AirQuality.Tile> shown = shown(d);
-        for (int i = 0; i < shown.size() && i < tiles.size(); i++) {
-            AirQuality.Tile t = shown.get(i);
-            AirQuality.Band b = t.band();
-            tiles.get(i).spark.set(lines.get(t.id), from, to, b == null ? 0xB3FFFFFF : b.colour);
-        }
+        for (int i = 0; i < shown.size() && i < tiles.size(); i++) fill(shown.get(i), tiles.get(i), parts.get(i));
     }
 
     // ---- layout ------------------------------------------------------------------------------------------------
 
-    /** Columns for n tiles: one row up to 3, then 2×2, 3×2, 4×2, 3×3, 4×3. */
+    /** Columns for n places (a sensor each): one row up to 3, then 2×2, 3×2, 4×2, 3×3, 4×3. */
     static int columns(int n) {
         return n <= 3 ? Math.max(n, 1) : n == 4 ? 2 : n <= 6 ? 3 : n <= 8 ? 4 : n == 9 ? 3 : 4;
     }
 
     private View build(AirQuality.Data d, int n) {
         tiles.clear();
+        parts.clear();
         LinearLayout root = column();
         root.setPadding(px(36), px(16), px(36), px(14));
 
@@ -248,53 +240,62 @@ public class AirQualityActivity extends Activity {
         head.addView(updated);
         root.addView(head);
 
-        int cols = columns(n), rows = (n + cols - 1) / cols;
-        int big = rows == 1 ? 64 : rows == 2 ? 48 : 38;
+        // The shown sensors' tiles: a place each, a tile of several taking theirs side by side, never split.
+        List<List<Integer>> groups = new ArrayList<>();
+        for (List<Integer> g : d.groups) {
+            List<Integer> in = new ArrayList<>();
+            for (int i : g) if (i < n) in.add(i);
+            if (!in.isEmpty()) groups.add(in);
+        }
+        int[] sizes = new int[groups.size()];
+        for (int i = 0; i < sizes.length; i++) sizes[i] = groups.get(i).size();
+        int places = Tiles.places(sizes), cols = columns(places), most = (places + cols - 1) / cols;
+        List<int[]> rows = Tiles.pack(sizes, cols, Math.max(most, 1));
+        int wide = cols;
+        for (int[] r : rows) {
+            int used = 0;
+            for (int g : r) used += sizes[g];
+            wide = Math.max(wide, used);
+        }
+        SensorTileView[] of = new SensorTileView[n];
+        int[] part = new int[n];
+
         LinearLayout grid = column();
         LinearLayout.LayoutParams gLp = new LinearLayout.LayoutParams(-1, 0, 1f);
         gLp.topMargin = px(10);
         root.addView(grid, gLp);
-        for (int r = 0; r < rows; r++) {
+        for (int r = 0; r < rows.size(); r++) {
             LinearLayout line = row();
             LinearLayout.LayoutParams lineLp = new LinearLayout.LayoutParams(-1, 0, 1f);
             if (r > 0) lineLp.topMargin = px(10);
             grid.addView(line, lineLp);
-            for (int c = 0; c < cols; c++) {
-                int i = r * cols + c;
-                LinearLayout.LayoutParams cLp = new LinearLayout.LayoutParams(0, -1, 1f);
-                if (c > 0) cLp.leftMargin = px(10);
-                // An empty place keeps the last row's tiles the size of the others.
-                line.addView(i < n ? tile(big) : new View(this), cLp);
+            int used = 0;
+            int[] row = rows.get(r);
+            for (int k = 0; k < row.length; k++) {
+                List<Integer> g = groups.get(row[k]);
+                LinearLayout.LayoutParams cLp = new LinearLayout.LayoutParams(0, -1, sizes[row[k]]);
+                if (k > 0) cLp.leftMargin = px(10);
+                SensorTileView v = new SensorTileView(this);
+                v.setCount(g.size());
+                for (int j = 0; j < g.size(); j++) {
+                    of[g.get(j)] = v;
+                    part[g.get(j)] = j;
+                }
+                line.addView(v, cLp);
+                used += sizes[row[k]];
+            }
+            // An empty place keeps the last row's tiles the size of the others.
+            if (used < wide) {
+                LinearLayout.LayoutParams cLp = new LinearLayout.LayoutParams(0, -1, wide - used);
+                cLp.leftMargin = px(10);
+                line.addView(new View(this), cLp);
             }
         }
+        for (int i = 0; i < n; i++) {
+            tiles.add(of[i]);
+            parts.add(part[i]);
+        }
         return root;
-    }
-
-    private View tile(int bigSp) {
-        TileViews v = new TileViews();
-        tiles.add(v);
-        LinearLayout t = column();
-        GradientDrawable g = new GradientDrawable();
-        g.setColor(0x14FFFFFF);
-        g.setCornerRadius(px(16));
-        g.setStroke(px(1), 0x1FFFFFFF);
-        t.setBackground(g);
-        t.setPadding(px(16), px(10), px(16), px(10));
-        v.title = text("", 14, 0xE6FFFFFF, true);
-        t.addView(v.title);
-        v.value = text("", bigSp, 0xFFFFFFFF, false);
-        v.value.setTypeface(Typeface.create("sans-serif-light", Typeface.NORMAL));
-        v.value.setIncludeFontPadding(false);
-        LinearLayout.LayoutParams vLp = new LinearLayout.LayoutParams(-2, -2);
-        vLp.topMargin = px(4);
-        t.addView(v.value, vLp);
-        v.band = text("", 13, 0xE6FFFFFF, false);
-        t.addView(v.band);
-        v.spark = new ThermostatViews.SparkView(this);
-        LinearLayout.LayoutParams sLp = new LinearLayout.LayoutParams(-1, 0, 1f);
-        sLp.topMargin = px(6);
-        t.addView(v.spark, sLp);
-        return t;
     }
 
     private TextView text(String s, int sp, int colour, boolean bold) {

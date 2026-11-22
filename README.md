@@ -175,19 +175,37 @@ from the type, when the screen is added (`thermostat`, then `thermostat_2`; `air
 you rename the screen. The four built-in ones are `weather`, `solar`, `tank` and `cameras`. The tab says each
 screen's id.
 
-**Thermostat screen:** up to four thermostats side by side. Any `climate` entity works (ecobee, Nest, Z-Wave,
-generic_thermostat and others): it reads only Home Assistant's standard climate attributes. Each shows where it is,
-where it's set ("68–76°" for a range, nothing when it's off), its mode, what it's doing (orange heating, blue cooling,
-grey idle), humidity, fan and preset when it has them, and the last 24 hours: the temperature over the target band,
-with heating and cooling marked along the bottom. Up to 8 other readings, such as other rooms or outside, go along
-the bottom. A thermostat without its own current temperature uses the first temperature among them. Temperatures are
-in Home Assistant's unit. It only shows: the remote changes nothing.
+**Thermostat screen:** up to four thermostats side by side, each titled by its room (its area, else its name). Any
+`climate` entity works (ecobee, Nest, Z-Wave, generic_thermostat and others): it reads only Home Assistant's standard
+climate attributes. Each is a dial over the thermostat's own range, with the two things to see from the couch largest
+in the middle: the room's temperature, and under it the setting in its colours ("68° – 76°", "Heat to 68°"). Around
+them, where it's set as knobs (orange heat, blue cool), where the room is as a white pointer inside the ring, and,
+while it heats or cools, the stretch from the room to the setpoint lit in that colour; what it's doing above the
+temperature. Beside or under the dial: humidity with its level ("68% Too humid", the same levels as the air quality
+screen), and fan and preset when it has them. Then two trends:
+
+- **24 hours:** the room as a white line, where it heated and cooled to as dashed orange and blue lines, and when it
+  heated or cooled as blocks in that colour. Each line's value now is at its right end, and how long it heated and
+  cooled is at the top ("Heated 1 h 40 m").
+- **7 days:** a column a day, today last: how warm the room got (a bar from the day's low to its high) and how long it
+  heated or cooled, with the week's totals at the top. With two or more thermostats there's only room for how long it
+  ran; the 24 hours above show the temperature.
+
+Up to 8 other readings, such as other rooms or outside, are tiles along the bottom, as on the air quality screen. A
+thermostat without its own current temperature uses the first temperature among them. Temperatures are in Home
+Assistant's unit. It only shows: the remote changes nothing.
+
+**Tiles with several sensors:** on both screens, the page's join button (the link icon) puts a sensor on the same tile
+as the one above it, side by side, up to 3 a tile, such as a room's temperature and humidity. The room is said once.
 
 **Air quality screen:** a tile for each sensor, up to 12, with its room and name ("Den · CO2": the device's name is
-dropped, as on the chips), its value and the last 24 hours. Any sensor works; the page suggests the ones Home
-Assistant knows measure air (AQI, PM1, PM2.5, PM10, CO₂, CO, VOC, NO₂, NO, ozone, SO₂), by room, and search finds any
-other, such as humidity or temperature. A tile is coloured only where the sensor's device class and unit are ones
-these levels cover:
+dropped, as on the chips), its value, which way it went in the last hour ("▲ 120 in 1 h", or "Steady"), its 24-hour
+low and high, and a line of the last 24 hours (with a scale and the hours when there are few tiles). Any sensor
+works; the page suggests the ones Home Assistant knows measure air (AQI, PM1, PM2.5, PM10, CO₂, CO, VOC, NO₂, NO,
+ozone, SO₂), by room, and search finds any other, such as humidity or temperature. Where the sensor's device class
+and unit are ones these levels cover, the tile also says its level ("● Good"), shows where the reading sits on a bar
+of the levels, and colours the line by level; a tile at a level that needs attention (orange and worse) is tinted in
+its colour:
 
 | Device class | Unit | Levels |
 |---|---|---|
@@ -196,10 +214,11 @@ these levels cover:
 | `pm10` | µg/m³ | US EPA: 54, 154, 254, 354, 424 |
 | `carbon_monoxide` | ppm | US EPA: 4.4, 9.4, 12.4, 15.4, 30.4 |
 | `carbon_dioxide` | ppm | Good up to 800, Fair up to 1200, then Poor (a ventilation rule of thumb, not a health limit) |
+| `humidity` | % | Dry under 30, Good 30–50, Humid up to 60, then Too humid (the EPA's mold guidance: below 60%, ideally 30–50%) |
 
 The EPA's levels are 40 CFR Part 58, Appendix G, as revised in March 2024. They're meant for 24-hour (PM) and 8-hour
-(CO) averages, so on a reading now the colour is a guide. Anything else, VOC sensors included (an index, ppb and
-µg/m³ don't compare), shows its value in grey.
+(CO) averages, so on a reading now the colour is a guide. Anything else, VOC sensors and temperatures included (VOC
+sensors' index, ppb and µg/m³ don't compare), shows its value without a level, its line in white.
 
 ## Build
 
@@ -293,8 +312,8 @@ actions:
       camera: camera.front_door
 ```
 
-A TV that's off stays off, unless you add `wake: true`. If the screensaver is showing, it's closed so the screen can
-be seen. With more than one TV, pick them with `device_id`; without it, every TV shows the screen. A TV that doesn't
+A TV that's off stays off, unless you add `wake: true`: then it's turned on, and the screen opens a few seconds later,
+once the TV's own home screen has come up. If the screensaver is showing, it's closed so the screen can be seen. With more than one TV, pick them with `device_id`; without it, every TV shows the screen. A TV that doesn't
 have that screen says so, and lists the ones it has.
 
 It goes through Home Assistant's **Android TV Remote** integration, set up for the same TV (the address you paired

@@ -68,9 +68,12 @@ const tests = {
     assert.strictEqual(tank.icon, "mdi:fish");
   },
   "a missing entity says so"() {
-    const gone = chips.preview(hass, { type: "entity", entity: "sensor.gone" }, {});
-    assert.strictEqual(gone.value, "—");
-    assert.strictEqual(gone.tone, "off");
+    // Whatever its kind: a thermostat, cover or lock removed from Home Assistant mustn't stop the page drawing.
+    for (const entity of ["sensor.gone", "climate.gone", "cover.gone", "lock.gone", "weather.gone", "switch.gone"]) {
+      const gone = chips.preview(hass, { type: "entity", entity }, {});
+      assert.strictEqual(gone.value, "—", entity);
+      assert.strictEqual(gone.tone, "off", entity);
+    }
   },
   "search finds by name or id, shows the live value and leaves out what's listed"() {
     const found = chips.search(hass, "hallway", ["climate.hall"]);
@@ -316,6 +319,83 @@ const tests = {
     assert.deepStrictEqual(found.map((f) => [f.group, f.entity_id]), [["", "sensor.attic_voc"], ["Den monitor", "sensor.den_co2"]]);
     // The temperature sensor isn't suggested first, but search finds any sensor.
     assert.ok(!found.some((f) => f.entity_id === "sensor.hall_temperature"));
+  },
+  "sensors joined to the one above share its tile, in list order"() {
+    const office = ["sensor.office_temperature", "sensor.office_humidity", "sensor.office_co2", "sensor.porch_aqi"];
+    assert.deepStrictEqual(chips.tiles(office, []), office.map((e) => [e]));
+    assert.deepStrictEqual(chips.tiles(office, undefined), office.map((e) => [e]));
+    assert.deepStrictEqual(chips.tiles(office, ["sensor.office_co2", "sensor.office_humidity"]),
+      [office.slice(0, 3), ["sensor.porch_aqi"]]);
+    // The first sensor starts a tile whatever it says, and ids that aren't listed change nothing.
+    assert.deepStrictEqual(chips.tiles(office, ["sensor.office_temperature", "sensor.gone", "sensor.porch_aqi"]),
+      [["sensor.office_temperature"], ["sensor.office_humidity"], ["sensor.office_co2", "sensor.porch_aqi"]]);
+    assert.deepStrictEqual(chips.tiles([], ["sensor.x"]), []);
+  },
+  "a sensor can join the tile above while that makes at most 3"() {
+    const s = ["sensor.a", "sensor.b", "sensor.c", "sensor.d", "sensor.e"];
+    assert.strictEqual(chips.MAX_PER_TILE, 3);
+    assert.strictEqual(chips.canJoin(s, [], 0), false, "the first has no tile above");
+    assert.strictEqual(chips.canJoin(s, [], 1), true);
+    assert.strictEqual(chips.canJoin(s, ["sensor.b"], 2), true, "a, b and c");
+    assert.strictEqual(chips.canJoin(s, ["sensor.b", "sensor.c"], 3), false, "a fourth on a, b and c");
+    // Joining brings the sensors joined to it along: c with d makes a, b, c, d.
+    assert.strictEqual(chips.canJoin(s, ["sensor.b", "sensor.d"], 2), false);
+    assert.strictEqual(chips.canJoin(s, ["sensor.d"], 2), true, "b, c and d");
+    assert.strictEqual(chips.canJoin(s, [], 9), false);
+  },
+  "a tile's other sensors stay together when its first is removed or moved away"() {
+    const s = ["sensor.porch_aqi", "sensor.office_temp", "sensor.office_hum", "sensor.office_co2"];
+    const joined = ["sensor.office_hum", "sensor.office_co2"];
+    // Removed: the office's humidity and CO2 keep a tile of their own, not the porch's.
+    let after = s.filter((e) => e !== "sensor.office_temp");
+    let j = chips.keepTiles(s, after, joined, null);
+    assert.deepStrictEqual(chips.tiles(after, j), [["sensor.porch_aqi"], ["sensor.office_hum", "sensor.office_co2"]]);
+    // Moved above the porch: the same.
+    after = chips.move(s, 1, 0);
+    j = chips.keepTiles(s, after, joined, "sensor.office_temp");
+    assert.deepStrictEqual(chips.tiles(after, j),
+      [["sensor.office_temp"], ["sensor.porch_aqi"], ["sensor.office_hum", "sensor.office_co2"]]);
+    // A sensor in the middle of a tile leaving keeps the rest of it together.
+    after = s.filter((e) => e !== "sensor.office_hum");
+    assert.deepStrictEqual(chips.tiles(after, chips.keepTiles(s, after, joined, null)),
+      [["sensor.porch_aqi"], ["sensor.office_temp", "sensor.office_co2"]]);
+    // The one that moves keeps its own flag: down past the end of its tile, it's on the tile it lands under.
+    after = chips.move(s, 2, 3);
+    assert.deepStrictEqual(chips.tiles(after, chips.keepTiles(s, after, joined, "sensor.office_hum")),
+      [["sensor.porch_aqi"], ["sensor.office_temp", "sensor.office_co2", "sensor.office_hum"]]);
+    assert.deepStrictEqual(chips.keepTiles(s, s, undefined, null), []);
+  },
+  "the join button toggles one sensor"() {
+    assert.deepStrictEqual(chips.toggleJoined(undefined, "sensor.b"), ["sensor.b"]);
+    assert.deepStrictEqual(chips.toggleJoined(["sensor.b", "sensor.c"], "sensor.b"), ["sensor.c"]);
+  },
+  "joined is cleaned for saving: listed, not first, once, in list order"() {
+    const s = ["sensor.a", "sensor.b", "sensor.c"];
+    assert.deepStrictEqual(chips.cleanJoined(s, ["sensor.c", "sensor.gone", "sensor.a", "sensor.b", "sensor.c"]),
+      ["sensor.b", "sensor.c"]);
+    assert.deepStrictEqual(chips.cleanJoined(s, undefined), []);
+    assert.deepStrictEqual(chips.cleanJoined([], ["sensor.a"]), []);
+  },
+  "a joined sensor keeps its flag when it moves, and only joined screens save joined"() {
+    const air = { id: "air", type: "air_quality", title: "Air", sensors: ["sensor.a", "sensor.b", "sensor.c"],
+      joined: ["sensor.b"] };
+    // Moved to the top it's first, so it isn't saved as joined; moved back down, it's joined again.
+    const top = { ...air, sensors: chips.move(air.sensors, 1, 0) };
+    const save = (sc) => chips.toSave({ chips: [], cameras: [], tank: [], solarText: "", screens: [sc] }).screens[0];
+    assert.deepStrictEqual(chips.tiles(top.sensors, top.joined), [["sensor.b"], ["sensor.a"], ["sensor.c"]]);
+    assert.ok(!("joined" in save(top)));
+    const back = { ...top, sensors: chips.move(top.sensors, 0, 2) };
+    assert.deepStrictEqual(save(back), { id: "air", type: "air_quality", title: "Air",
+      sensors: ["sensor.a", "sensor.c", "sensor.b"], joined: ["sensor.b"] });
+    // Removed: dropped from what's saved.
+    assert.ok(!("joined" in save({ ...air, sensors: ["sensor.a", "sensor.c"] })));
+    const up = { id: "thermostat", type: "thermostat", title: "Up", climates: ["climate.hall"],
+      sensors: ["sensor.a", "sensor.b"], joined: ["sensor.b", "sensor.a"] };
+    assert.deepStrictEqual(save(up), { ...up, joined: ["sensor.b"] });
+    // The copy is the page's own: changing it later doesn't change what was saved.
+    const out = save(up);
+    up.joined.push("sensor.x");
+    assert.deepStrictEqual(out.joined, ["sensor.b"]);
   },
   "saving sends the screens as the integration takes them"() {
     const up = { id: "thermostat", type: "thermostat", title: " Upstairs ", climates: ["climate.hall"], sensors: [] };

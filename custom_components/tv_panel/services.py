@@ -22,13 +22,14 @@ from .tv_link import CAMERA, SCREENS, async_open, screen_link
 _LOGGER = logging.getLogger(__name__)
 
 SHOW = "show"
-ONE_SCREEN = "Say which screen to show, as screen (page is its old name)."
+ONE_SCREEN = "Say which screen to show, as screen."
+BOTH = "Say which screen to show, as screen: not both screen and page."
 
 
 def _one_screen(data: dict) -> dict:
     """Exactly one of screen and its old name page, read as screen."""
     if ("screen" in data) == ("page" in data):
-        raise vol.Invalid(ONE_SCREEN)
+        raise vol.Invalid(BOTH if "screen" in data else ONE_SCREEN)
     if "page" in data:
         data = {k: v for k, v in data.items() if k != "page"} | {"screen": data["page"]}
     return data

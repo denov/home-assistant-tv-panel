@@ -305,8 +305,9 @@ class TvPanelSettings extends HTMLElement {
     if (sc.type === "thermostat") {
       const climates = sc.climates || [];
       const sensors = sc.sensors || [];
-      return `<p class="hint">Each thermostat: where it is and where it's set, its mode and what it's doing, humidity and
-          the fan when it has them, and the last 24 hours. Any thermostat in Home Assistant works (a <code>climate</code>
+      return `<p class="hint">Each thermostat, titled by its room: a dial with where it is and where it's set, what it's
+          doing, humidity and the fan when it has them, its last 24 hours, and its last 7 days (how warm it got and how
+          long it heated or cooled each day). Any thermostat in Home Assistant works (a <code>climate</code>
           entity), up to ${chips.MAX_CLIMATES}. A thermostat chip opens the first of these screens that lists it.</p>
         ${this.titleBox(sc)}
         <h3>Thermostats</h3>
@@ -314,18 +315,20 @@ class TvPanelSettings extends HTMLElement {
         ${climates.length ? "" : this.missing("Add a thermostat: the screen shows nothing without one.")}
         ${climates.length < chips.MAX_CLIMATES ? `<div class="add">${this.searchBox(`${sc.id}.climates`, "Add a thermostat")}</div>` : ""}
         <h3>Other readings</h3>
-        <p class="hint">Optional: temperatures to show beside them, such as other rooms or outside.</p>
+        <p class="hint">Optional: readings to show beside them, such as other rooms' temperature and humidity, or outside.</p>
         <div class="list">${sensors.map((e, i) => this.memberRow(`${sc.id}.sensors`, e, i)).join("")}</div>
+        ${this.tilesNote(sc)}
         ${sensors.length < chips.MAX_READINGS ? `<div class="add">${this.searchBox(`${sc.id}.sensors`, "Add a sensor")}</div>` : ""}`;
     }
     if (sc.type === "air_quality") {
       const sensors = sc.sensors || [];
-      return `<p class="hint">A tile per sensor: its value, a colour for how good that is (where Home Assistant knows
+      return `<p class="hint">Each sensor on a tile: its value, a colour for how good that is (where Home Assistant knows
           what the sensor measures, in a unit with known levels), and the last 24 hours. Up to ${chips.MAX_AIR_SENSORS}
-          fit the screen. Any sensor works; the air quality sensors Home Assistant knows about are suggested first.</p>
+          sensors fit the screen. Any sensor works; the air quality sensors Home Assistant knows about are suggested first.</p>
         ${this.titleBox(sc)}
         <div class="list">${sensors.map((e, i) => this.memberRow(`${sc.id}.sensors`, e, i)).join("")}</div>
         ${sensors.length ? "" : this.missing("Add a sensor: the screen shows nothing without one.")}
+        ${this.tilesNote(sc)}
         ${sensors.length < chips.MAX_AIR_SENSORS ? `<div class="add">${this.searchBox(`${sc.id}.sensors`, "Add a sensor")}</div>`
           : `<p class="hint">That's ${chips.MAX_AIR_SENSORS}, as many as fit.</p>`}`;
     }
@@ -442,12 +445,55 @@ class TvPanelSettings extends HTMLElement {
   }
 
   memberRow(list, e, i) {
-    return `<div class="item" draggable="true" data-list="${list}" data-index="${i}">
+    const sc = this.tileScreen(list);
+    const joined = (n) => Boolean(sc) && n > 0 && (sc.joined || []).includes(sc.sensors[n]);
+    // A joined sensor hangs off the row above; "more" when the next one hangs off it in turn, so the rule runs on.
+    const look = joined(i) ? `joined ${joined(i + 1) ? "more" : ""}` : "";
+    return `<div class="item ${look}" draggable="true" data-list="${list}" data-index="${i}">
       <span class="handle" title="Drag to move">⋮⋮</span>
       <div class="name"><div>${esc(chips.defaultName(this._hass, e))}</div><div class="sub">${esc(e)}</div></div>
       <div class="value" data-live="${esc(e)}">${esc(chips.stateText(this._hass, e))}</div>
+      ${sc ? this.joinButton(sc, list, i, joined(i)) : ""}
       ${this.arrows(list, i, this.listGet(list).length)}
     </div>`;
+  }
+
+  /** A thermostat or air quality screen whose sensor list this is ("<id>.sensors"): its sensors can share tiles. */
+  tileScreen(list) {
+    const [id, key] = list.split(".");
+    return key === "sensors" ? this.screen(id) || null : null;
+  }
+
+  /** Same tile as the sensor above, or its own: pressed while joined, and off when the tile would hold too many. The
+   * first sensor has nothing above it: an empty space keeps its value in line with the others. */
+  joinButton(sc, list, i, joined) {
+    if (i === 0) return `<span class="icon join blank" aria-hidden="true"></span>`;
+    const can = joined || chips.canJoin(sc.sensors, sc.joined, i);
+    const title = joined ? "Own tile" : can ? "Same tile as the sensor above"
+      : `Same tile as the sensor above: no room, at most ${chips.MAX_PER_TILE} sensors on a tile`;
+    return `<button class="icon join" data-action="join" data-list="${esc(list)}" data-index="${i}" aria-pressed="${joined}"
+      title="${esc(title)}" aria-label="${esc(title)}" ${can ? "" : "disabled"}><ha-icon icon="mdi:link-variant"></ha-icon></button>`;
+  }
+
+  /** Under a screen's sensor list: what Join does, and a warning when a move or a remove left a tile too full. */
+  tilesNote(sc) {
+    const full = chips.tiles(sc.sensors, sc.joined).some((t) => t.length > chips.MAX_PER_TILE);
+    return `${full ? this.missing(`A tile holds more than ${chips.MAX_PER_TILE} sensors: give one its own tile before you save.`) : ""}
+      <p class="hint join-hint">Join (<ha-icon icon="mdi:link-variant"></ha-icon>) puts a sensor on the same tile as the one
+        above it, side by side, up to ${chips.MAX_PER_TILE} a tile.</p>`;
+  }
+
+  /** The list after a move (of `moved`) or a remove (`moved` null), with a screen's tiles kept together. */
+  reorder(list, value, moved) {
+    const sc = this.tileScreen(list);
+    if (sc?.joined) sc.joined = chips.keepTiles(this.listGet(list), value, sc.joined, moved);
+    this.listSet(list, value);
+  }
+
+  /** A sensor taken off a screen, or put on it, isn't joined: added back later, it starts on a tile of its own. */
+  unjoin(list, id) {
+    const sc = this.tileScreen(list);
+    if (sc?.joined) sc.joined = sc.joined.filter((e) => e !== id);
   }
 
   arrows(list, i, n) {
@@ -646,11 +692,19 @@ class TvPanelSettings extends HTMLElement {
       else if (action === "revert") this.load(this.entryId);
       else if (action === "up" || action === "down") {
         this.editing = null;
-        this.listSet(list, chips.move(this.listGet(list), i, action === "up" ? i - 1 : i + 1));
+        this.reorder(list, chips.move(this.listGet(list), i, action === "up" ? i - 1 : i + 1), this.listGet(list)[i]);
         this.changed();
       } else if (action === "remove") {
         this.editing = null;
-        this.listSet(list, this.listGet(list).filter((_, j) => j !== i));
+        const gone = this.listGet(list)[i];
+        this.reorder(list, this.listGet(list).filter((_, j) => j !== i), null);
+        this.unjoin(list, gone);
+        this.changed();
+      } else if (action === "join") {
+        // The flag is the entity's, so it stays with it when the list is reordered.
+        const sc = this.tileScreen(list);
+        if (!sc?.sensors?.[i]) return;
+        sc.joined = chips.toggleJoined(sc.joined, sc.sensors[i]);
         this.changed();
       } else if (action === "remove-screen") {
         const id = b.dataset.screen;
@@ -675,7 +729,10 @@ class TvPanelSettings extends HTMLElement {
             if (!this.s[group].includes(id)) this.s[group].push(id);
             if (!this.s.chips.some((c) => c.type === group)) this.s.chips.push({ type: group });
           } else this.s.chips.push({ type: "entity", entity: id });
-        } else if (!this.listGet(list).includes(id)) this.listSet(list, [...this.listGet(list), id]);
+        } else if (!this.listGet(list).includes(id)) {
+          this.listSet(list, [...this.listGet(list), id]);
+          this.unjoin(list, id);
+        }
         this.queries[list] = "";
         this.changed();
       }
@@ -762,7 +819,8 @@ class TvPanelSettings extends HTMLElement {
       const item = ev.target.closest?.(".item");
       if (!this.drag || !item || item.dataset.list !== this.drag.list) return;
       ev.preventDefault();
-      this.listSet(this.drag.list, chips.move(this.listGet(this.drag.list), this.drag.from, Number(item.dataset.index)));
+      const was = this.listGet(this.drag.list);
+      this.reorder(this.drag.list, chips.move(was, this.drag.from, Number(item.dataset.index)), was[this.drag.from]);
       this.drag = null;
       this.editing = null;
       this.changed();
@@ -853,6 +911,19 @@ const CSS = `
     border: 1px solid var(--divider-color); border-radius: 6px; padding: 6px 8px; max-width: 100%; }
   .item { display: flex; align-items: center; gap: 10px; padding: 6px 8px; border-radius: 8px; background: var(--secondary-background-color); }
   .item.dragging { opacity: 0.4; }
+  /* A sensor on the tile of the one above: indented and pulled up to it, with a rule from that row into this one. */
+  .item.joined { position: relative; margin: -4px 0 0 30px; }
+  .item.joined::before { content: ""; position: absolute; left: -20px; top: -3px; width: 13px; height: calc(50% + 3px);
+    border: solid var(--primary-color); border-width: 0 0 2px 2px; border-bottom-left-radius: 7px; }
+  .item.joined.more::after { content: ""; position: absolute; left: -20px; top: 50%; bottom: -3px;
+    border-left: 2px solid var(--primary-color); }
+  button.join { display: inline-flex; align-items: center; justify-content: center; }
+  button.join ha-icon { --mdc-icon-size: 18px; width: 18px; height: 18px; display: inline-flex; }
+  button.join[aria-pressed="true"] { background: var(--primary-color); color: var(--text-primary-color, #fff);
+    border-color: transparent; }
+  .join.blank { visibility: hidden; box-sizing: border-box; width: 36px; height: 1px; flex: none; }
+  .hint.join-hint { margin: 8px 0 0; }
+  .join-hint ha-icon { --mdc-icon-size: 15px; width: 15px; height: 15px; display: inline-flex; vertical-align: -3px; }
   .item.over { outline: 2px solid var(--primary-color); }
   .handle { cursor: grab; color: var(--secondary-text-color); letter-spacing: -3px; user-select: none; padding: 0 2px; }
   .name { flex: 1; min-width: 0; display: flex; flex-direction: column; }

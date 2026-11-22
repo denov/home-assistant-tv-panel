@@ -133,7 +133,7 @@ export function preview(hass, chip, settings) {
     return out(`mdi:${icon}`, missing ? name : text, value, s?.state === "sunny" ? "amber" : "sky");
   }
   if (domain === "climate") {
-    return out("mdi:thermostat", name, missing ? "—" : thermostat(s), s.attributes.hvac_action === "heating" ? "warm" : "blue");
+    return out("mdi:thermostat", name, missing ? "—" : thermostat(s), s?.attributes?.hvac_action === "heating" ? "warm" : "blue");
   }
   if (domain === "cover") {
     const garage = s?.attributes?.device_class === "garage" || id.includes("garage") || /garage/i.test(name);
@@ -190,10 +190,11 @@ export const SCREEN_TYPES = {
   air_quality: { title: "Air quality", extra: true },
 };
 export const DEFAULT_SCREENS = ["weather", "solar", "tank", "cameras"].map((t) => ({ id: t, type: t }));
-/** model.py's MAX_CLIMATES, MAX_AIR_SENSORS and MAX_READINGS. */
+/** model.py's MAX_CLIMATES, MAX_AIR_SENSORS, MAX_READINGS and MAX_PER_TILE (sensors side by side on one tile). */
 export const MAX_CLIMATES = 4;
 export const MAX_AIR_SENSORS = 12;
 export const MAX_READINGS = 8;
+export const MAX_PER_TILE = 3;
 /** The built-in screens' links, which apps before 0.7.0 know too (tv_link.py). */
 const OLD_LINKS = { weather: "weather", solar: "solar", tank: "apex", cameras: "cameras" };
 /** Sensors an air quality screen suggests with nothing typed; search finds any other sensor, such as humidity. */
@@ -223,6 +224,57 @@ export function newScreen(screens, type) {
   let id = base;
   for (let n = 2; screens.some((s) => s.id === id); n++) id = `${base}_${n}`;
   return type === "thermostat" ? { id, type, title, climates: [], sensors: [] } : { id, type, title, sensors: [] };
+}
+
+// A screen's sensors are tiles, one sensor a tile, except that each sensor in the screen's `joined` shares the tile of
+// the sensor before it (model.py's tiles()). The flag is the entity's: it stays with it when it moves, and only counts
+// below the first sensor.
+
+/** The sensors as their tiles, [[id, ...], ...]. */
+export function tiles(sensors, joined) {
+  const on = new Set(joined || []);
+  const out = [];
+  for (const e of sensors || []) {
+    if (out.length && on.has(e)) out[out.length - 1].push(e);
+    else out.push([e]);
+  }
+  return out;
+}
+
+/** Whether sensor i can join the tile above: not the first, and the tile it makes (with the sensors joined to it)
+ * holds at most MAX_PER_TILE. */
+export function canJoin(sensors, joined, i) {
+  if (i <= 0 || i >= sensors.length) return false;
+  const on = new Set([...(joined || []), sensors[i]]);
+  let first = i;
+  while (first > 0 && on.has(sensors[first])) first--;
+  let last = i;
+  while (last + 1 < sensors.length && on.has(sensors[last + 1])) last++;
+  return last - first + 1 <= MAX_PER_TILE;
+}
+
+/** `joined` after the list changed from `before` to `after` (a sensor removed, or `moved` moved): a joined sensor
+ * that stayed where it was keeps its join only while the sensor now above it was on its tile, so the rest of a tile
+ * stays together when one of it leaves instead of joining the tile above. The one that moved keeps its own flag. */
+export function keepTiles(before, after, joined, moved) {
+  const tileOf = new Map();
+  tiles(before, joined).forEach((t, n) => t.forEach((e) => tileOf.set(e, n)));
+  return (joined || []).filter((e) => {
+    const i = after.indexOf(e);
+    return e === moved || (i > 0 && tileOf.get(after[i - 1]) === tileOf.get(e));
+  });
+}
+
+/** `joined` with this sensor joined to the tile above, or back on a tile of its own. */
+export function toggleJoined(joined, id) {
+  const list = joined || [];
+  return list.includes(id) ? list.filter((e) => e !== id) : [...list, id];
+}
+
+/** `joined` as tv_panel/save takes it: sensors still listed, not the first, once each, in the list's order. */
+export function cleanJoined(sensors, joined) {
+  const on = new Set(joined || []);
+  return [...new Set((sensors || []).slice(1))].filter((e) => on.has(e) && e !== sensors[0]);
 }
 
 /** The OK editor's screens, as [id, title]: the camera grid by that name. */
@@ -414,12 +466,14 @@ export function parseSolar(text) {
 }
 
 /** A screen as tv_panel/save takes it: only its type's fields, the title trimmed (an empty one is its type's, as the
- * title box shows it). */
+ * title box shows it), and `joined` only when a sensor shares a tile. */
 function screenToSave(s) {
   if (!SCREEN_TYPES[s.type]?.extra) return { id: s.id, type: s.type };
   const out = { id: s.id, type: s.type, title: String(s.title || "").trim() || SCREEN_TYPES[s.type].title };
   if (s.type === "thermostat") out.climates = (s.climates || []).slice();
   out.sensors = (s.sensors || []).slice();
+  const joined = cleanJoined(out.sensors, s.joined);
+  if (joined.length) out.joined = joined;
   return out;
 }
 
